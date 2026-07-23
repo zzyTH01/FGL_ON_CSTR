@@ -33,9 +33,18 @@ from fgl_common import (  # noqa: E402
 
 # -------------------- 数据路径 --------------------
 _CSTR_DIR = os.path.dirname(os.path.abspath(__file__))
+def _resolve_data(name):
+    """数据路径:data/ 优先(归并后),其次根目录(向后兼容)。"""
+    for d in ("data", "."):
+        p = os.path.join(_CSTR_DIR, d, name)
+        if os.path.exists(p):
+            return p
+    return os.path.join(_CSTR_DIR, "data", name)
+
+
 _AVAILABLE_DATASETS = {
-    "temperature": os.path.join(_CSTR_DIR, "data.pkl"),
-    "h2o":         os.path.join(_CSTR_DIR, "data_h2o.pkl"),
+    "temperature": _resolve_data("data.pkl"),
+    "h2o":         _resolve_data("data_h2o.pkl"),
 }
 DEFAULT_DATASET = "h2o"
 

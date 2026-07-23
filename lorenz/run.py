@@ -87,6 +87,12 @@ def estimate_lyap(x, dt, dim=3, delay=10):
     return float(np.mean(np.log(np.array(d1_vals) / (np.array(d0_vals[:len(d1_vals)]) + 1e-10))) / (20 * dt))
 
 
+def _data_dir():
+    d = os.path.join(_LORENZ_DIR, "data")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def _save_pkl(series, path, label=""):
     col = torch.tensor(series, dtype=torch.float64).unsqueeze(1)
     tensor = torch.cat((col, col.clone()), dim=1)
@@ -129,7 +135,7 @@ def run_generate(args):
                       f"{x_trim.std():8.3f}  {regime}")
                 results.append({"rho": rho, "periodicity": score, "lyap": lyap, "regime": regime})
                 if score < 0.85 or "PERIOD-DOUBLING" in regime:
-                    _save_pkl(x_trim, os.path.join(_LORENZ_DIR, f"lorenz_rho{rho}.pkl"),
+                    _save_pkl(x_trim, os.path.join(_data_dir(), f"lorenz_rho{rho}.pkl"),
                               f"Lorenz ρ={rho}")
             except Exception as e:
                 print(f"  {rho:8.1f}  {'─':>12s}  FAILED: {e}")
@@ -145,7 +151,7 @@ def run_generate(args):
         lyap = estimate_lyap(x_trim, args.dt)
         print(f"Periodicity: {score:.4f}, Lyap(est): {lyap:.6f}")
         print(f"x range: [{x_trim.min():.3f}, {x_trim.max():.3f}], std: {x_trim.std():.3f}")
-        _save_pkl(x_trim, os.path.join(_LORENZ_DIR, f"lorenz_rho{args.rho}.pkl"),
+        _save_pkl(x_trim, os.path.join(_data_dir(), f"lorenz_rho{args.rho}.pkl"),
                   f"Lorenz ρ={args.rho}")
 
 
