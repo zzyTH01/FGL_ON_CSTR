@@ -1,0 +1,5 @@
+{
+    "dataset": "Kaggle2014",
+    "datadir": "detection_dataset",
+    "cachedir": "cachedir-teacher"
+}
