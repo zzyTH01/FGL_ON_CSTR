@@ -1,7 +1,0 @@
-{
-    "dataset": "CHBMIT",
-    "datadir": "Dataset",
-    "cachedir": "cachedir-student",
-    "resultdir": "student-CHBMIT",
-    "checkptdir":"pytorch_models"
-}
