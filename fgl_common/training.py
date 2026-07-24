@@ -11,7 +11,7 @@
   - ``run_fgl_experiment``       —— 三阶段(teacher→baseline→student)。覆盖 baseline /
                                      lstm / regression / drift,差异收敛为 ``model_fn`` /
                                      ``regression`` / ``use_ph`` 参数。
-  - ``run_adaptive_weight``      —— 自适应蒸馏权重 A/B/C/D(独立流程)。
+  - ``run_adaptive_weight``      —— 自适应蒸馏权重 A/B/C/D(teacher−student MSE 差距,独立流程)。
   - ``run_adaptive_inference``   —— 推理时 teacher-student 融合(独立流程)。
   - ``run_seq2seq``              —— 多步序列 FGL(独立流程)。
 """
@@ -218,6 +218,26 @@ def compute_per_sample_errors(model, loader, L):
             y_int = y.long().to(device)
             logits = model(x)
             per_sample = celoss(logits, y_int)
+            for j, idx in enumerate(indices):
+                errors[idx.item()] = per_sample[j].item()
+    return errors
+
+
+def compute_per_sample_mse(model, loader, L):
+    """Per-sample bin-index MSE as a dict {sample_idx: mse}.
+
+    ``mse = (argmax_pred - true_bin) ** 2`` — consistent with :func:`evaluate`
+    (classification MSE on predicted vs true bin index). Feeds the teacher–student
+    MSE-gap weighting in :func:`run_adaptive_weight`; uses batch_size=1 loaders.
+    """
+    model.eval()
+    errors = {}
+    with torch.no_grad():
+        for indices, x, y in loader:
+            x = x.float().to(device).view(-1, 1, L)
+            y_int = y.long().to(device).squeeze(-1)
+            pred = model(x).argmax(dim=1).float()
+            per_sample = (pred - y_int.float()).pow(2)
             for j, idx in enumerate(indices):
                 errors[idx.item()] = per_sample[j].item()
     return errors
@@ -452,11 +472,54 @@ def run_adaptive_weight(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
     baseline = RNN(L, hidden, output, layers).to(device)
     train_simple(baseline, student_train, student_val)
 
-    # per-sample weights
+    # Always train a preliminary standard-FGL student (uniform-weight KL) as the
+    # "initial student" reference. Its per-sample MSE drives the gap weights
+    # (B/C/D), and its test MSE is the baseline the final weighted student must
+    # beat for adaptive weighting to count as helpful.
+    def train_student_standard():
+        stu = RNN(L, hidden, output, layers).to(device)
+        opt = optim.Adam(stu.parameters(), lr=lr)
+        stop = EarlyStopper(patience=patience)
+        for _ in range(epochs):
+            stu.train()
+            for (_, xs, ys), (_, xt, _) in zip(student_train, teacher_train):
+                xs = xs.float().to(device).view(-1, 1, L)
+                ys = ys.long().to(device)
+                out = stu(xs)
+                xt = xt.float().to(device).view(-1, 1, L)
+                with torch.no_grad():
+                    tlog = teacher(xt)
+                loss = alpha * ce(out, ys) + KL(out, tlog, temperature, alpha)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+            stu.eval()
+            with torch.no_grad():
+                vl = sum(ce(stu(x.float().to(device).view(-1, 1, L)), y.long().to(device)).item()
+                         for _, x, y in student_val) / len(student_val)
+            if stop.step(vl, stu):
+                break
+        stop.restore(stu)
+        stu.eval()
+        return stu
+
+    prelim_student = train_student_standard()
+    student_mse_init = evaluate(prelim_student, student_test, L)
+
+    # per-sample weights — criterion = max(0, se_student − se_teacher) MSE gap,
+    # taken on the preliminary student vs the teacher.
     student_train_indices = [indices[0].item() for indices, _, _ in student_train_full]
-    baseline_errors = compute_per_sample_errors(baseline, student_train_full, L)
-    teacher_errors = compute_per_sample_errors(teacher, teacher_train_full, L)
-    weights_dict, raw_w, norm_w = compute_weights(variant, baseline_errors,
+    if variant == 'A':
+        student_errors, teacher_errors = {}, {}
+    else:
+        student_errors = compute_per_sample_mse(prelim_student, student_train_full, L)
+        te_raw = compute_per_sample_mse(teacher, teacher_train_full, L)
+        # teacher loader uses offset=H-1 → its tuple-idx j predicts the same raw
+        # target as student idx j-(H-1). Re-key into student-index space so the
+        # gap is on aligned targets (fixes the offset misalignment inherited from
+        # the no-op is_teacher_loader in the original script).
+        teacher_errors = {int(j - (H - 1)): e for j, e in te_raw.items()}
+    weights_dict, raw_w, norm_w = compute_weights(variant, student_errors,
                                                   teacher_errors, student_train_indices)
     if verbose:
         print(f"    Raw weights: mean={raw_w.mean():.3f} std={raw_w.std():.3f} "
@@ -504,11 +567,17 @@ def run_adaptive_weight(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
     b_mse = evaluate(baseline, student_test, L)
     s_mse = evaluate(student, student_test, L)
     improvement = (b_mse - s_mse) / b_mse * 100 if b_mse > 0 else 0
+    # vs the preliminary (initial) student — positive = adaptive weighting
+    # descended below the initial standard-FGL student.
+    init_delta = (student_mse_init - s_mse) / student_mse_init * 100 if student_mse_init > 0 else 0
     if verbose:
-        print(f"  [{variant}] Baseline={b_mse:.1f} Student={s_mse:.1f} Δ={improvement:+.1f}%")
+        print(f"  [{variant}] Baseline={b_mse:.1f}  initStudent={student_mse_init:.1f}  "
+              f"Student={s_mse:.1f}  Δbase={improvement:+.1f}%  Δinit={init_delta:+.1f}%")
     return {"variant": variant, "L": L, "H": H, "seed": seed,
-            "teacher_mse": t_mse, "baseline_mse": b_mse, "student_mse": s_mse,
-            "abs_improvement": b_mse - s_mse, "fgl_delta": improvement}
+            "teacher_mse": t_mse, "baseline_mse": b_mse,
+            "student_mse_init": student_mse_init, "student_mse": s_mse,
+            "abs_improvement": b_mse - s_mse, "fgl_delta": improvement,
+            "init_delta": init_delta}
 
 
 # ================================================================

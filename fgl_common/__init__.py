@@ -24,6 +24,7 @@ from .training import (
     device, EarlyStopper,
     evaluate, evaluate_with_ph, evaluate_regression, evaluate_seq,
     page_hinkley_update, compute_shared_bin_edges, compute_per_sample_errors,
+    compute_per_sample_mse,
     run_fgl_experiment, run_adaptive_weight, run_adaptive_inference, run_seq2seq,
 )
 from .sweep import run_lh_sweep
@@ -39,6 +40,7 @@ __all__ = [
     "device", "EarlyStopper",
     "evaluate", "evaluate_with_ph", "evaluate_regression", "evaluate_seq",
     "page_hinkley_update", "compute_shared_bin_edges", "compute_per_sample_errors",
+    "compute_per_sample_mse",
     "run_fgl_experiment", "run_adaptive_weight", "run_adaptive_inference", "run_seq2seq",
     # sweep
     "run_lh_sweep",

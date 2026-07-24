@@ -20,6 +20,8 @@ import os
 import pickle
 import sys
 
+import numpy as np
+
 # 确保项目根在 sys.path,以便 import fgl_common
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
@@ -83,7 +85,7 @@ def run_regression(args):
                        patience=args.patience, seed=args.seed, regression=True, label="regression")
 
 
-def run_seq2seq(args):
+def run_seq2seq_exp(args):
     """对应 cstr/exp/fgl_cstr_seq2seq.py:多步序列预测。"""
     data = _load_data(args.dataset)
     run_seq2seq(data, student_horizon=args.H, teacher_steps=args.teacher_steps,
@@ -101,8 +103,8 @@ def run_adaptive(args):
                            patience=args.patience, seed=args.seed)
 
 
-def run_adaptive_weight(args):
-    """对应 cstr/exp/adaptive_weight_exp.py:自适应蒸馏权重 A/B/C/D。"""
+def run_adaptive_weight_exp(args):
+    """对应 cstr/exp/adaptive_weight_exp.py:自适应蒸馏权重 A/B/C/D(teacher−student MSE 差距)。"""
     data = _load_data(args.dataset)
     variants = (args.variants or "A,B,C").split(",")
     n_seeds = args.seeds if args.seeds else 5
@@ -115,15 +117,23 @@ def run_adaptive_weight(args):
                                     epochs=args.epochs, batch_size=args.batch_size,
                                     patience=args.patience, seed=s, variant=variant)
             rows.append(r)
-    # 汇总
+    # 汇总:vs baseline 以及 vs 初始 student(自适应是否真下降)
     print(f"\n{'='*60}\nSUMMARY: adaptive_weight (L={args.L} H={args.H})\n{'='*60}")
     from collections import defaultdict
-    agg = defaultdict(list)
+    agg_fgl = defaultdict(list)
+    agg_init = defaultdict(list)
     for r in rows:
-        agg[r["variant"]].append(r["fgl_delta"])
-    for v, deltas in sorted(agg.items()):
-        arr = np.array(deltas)
-        print(f"  {v}: Δ={arr.mean():+.1f}% ± {arr.std(ddof=1) if len(arr) > 1 else 0:.1f}% (n={len(arr)})")
+        agg_fgl[r["variant"]].append(r["fgl_delta"])
+        agg_init[r["variant"]].append(r["init_delta"])
+
+    def _sd(a):
+        a = np.array(a)
+        return a.std(ddof=1) if len(a) > 1 else 0.0
+
+    for v in sorted(agg_fgl.keys()):
+        fgl = np.array(agg_fgl[v]); ini = np.array(agg_init[v])
+        print(f"  {v}: vs baseline Δ={fgl.mean():+.1f}%±{_sd(fgl):.1f}  "
+              f"vs initStudent Δ={ini.mean():+.1f}%±{_sd(ini):.1f}  (n={len(fgl)})")
 
 
 def run_lh_sweep_exp(args):
@@ -156,9 +166,9 @@ EXPERIMENTS = {
     "baseline":        dict(fn=run_baseline,        enabled=True,  note="标准 RNN 分类蒸馏(基准)"),
     "lstm":            dict(fn=run_lstm,            enabled=False, note="LSTM 对照 —— 失败:模型容量非瓶颈"),
     "regression":      dict(fn=run_regression,      enabled=False, note="连续值回归 —— 失败"),
-    "seq2seq":         dict(fn=run_seq2seq,         enabled=False, note="多步序列预测 —— 失败"),
+    "seq2seq":         dict(fn=run_seq2seq_exp,     enabled=False, note="多步序列预测 —— 失败"),
     "adaptive":        dict(fn=run_adaptive,        enabled=False, note="推理时 teacher-student 融合 —— 失败"),
-    "adaptive_weight": dict(fn=run_adaptive_weight, enabled=False, note="自适应蒸馏权重 A/B/C/D —— 失败"),
+    "adaptive_weight": dict(fn=run_adaptive_weight_exp, enabled=False, note="自适应蒸馏权重(teacher−student MSE 差距)A~E;E=零地板放大版,实测有效(L20H15)"),
     "lh_sweep":        dict(fn=run_lh_sweep_exp,    enabled=True,  note="L×H 网格扫描(主线)"),
 }
 
@@ -187,7 +197,6 @@ def _add_common_args(p):
 
 
 def main():
-    import numpy as np  # noqa: F401  (used by run_adaptive_weight summary)
     parser = argparse.ArgumentParser(description="CSTR 统一实验入口(配置字典开关)")
     _add_common_args(parser)
     parser.add_argument("-e", "--experiments", type=str, default=None,
