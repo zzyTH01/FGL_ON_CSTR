@@ -15,6 +15,7 @@
   - ``run_adaptive_inference``   —— 推理时 teacher-student 融合(独立流程)。
   - ``run_seq2seq``              —— 多步序列 FGL(独立流程)。
 """
+import os
 from collections import deque
 
 import numpy as np
@@ -28,12 +29,30 @@ from .distillation import KL, KL_weighted, seq_KL, compute_weights
 
 
 # ==================== Device ====================
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
+def _select_device() -> torch.device:
+    """CUDA > MPS > CPU 自动检测。
+
+    可用环境变量 ``FGL_DEVICE`` 强制覆盖(cpu / mps / cuda),用于在 MPS 上
+    遇到不支持的 op 时回退 CPU 等场景;指定不可用的设备会显式报错而非静默回退。
+    """
+    env = os.environ.get("FGL_DEVICE", "").strip().lower()
+    if env:
+        if env not in ("cpu", "mps", "cuda"):
+            raise ValueError(f"FGL_DEVICE={env!r} 不合法,应为 cpu / mps / cuda 之一")
+        if env == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("FGL_DEVICE=cuda 但未检测到可用 CUDA")
+        if env == "mps" and not torch.backends.mps.is_available():
+            raise RuntimeError("FGL_DEVICE=mps 但未检测到可用 MPS")
+        return torch.device(env)
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+device = _select_device()
+print(f"[fgl] device = {device}")  # 换机器运行时一眼看到落到了哪
 
 
 # ==================== Early Stopping ====================

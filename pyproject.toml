@@ -1,7 +1,7 @@
 [project]
 name = "futureguidedlearning-main"
 version = "0.1.0"
-description = "Future Guided Learning for Time Series Prediction (Epilepsy Seizure Detection)"
+description = "Future-Guided Learning for time-series forecasting (Mackey-Glass / CSTR / Lorenz)"
 requires-python = ">=3.11, <3.12"
 dependencies = [
     "scipy==1.11.3",
