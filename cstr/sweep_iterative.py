@@ -62,14 +62,22 @@ def main():
     ap.add_argument("--alpha", type=float, default=0.5)
     ap.add_argument("-T", "--temperature", type=float, default=4.0, dest="temperature")
     ap.add_argument("--bins", type=int, default=50)
+    ap.add_argument("--variant", default="E", help="weighting variant: E / E-soft / C / D")
+    ap.add_argument("--w_floor", type=float, default=None, help="[E-soft] 软地板(默认 0.2)")
     args = ap.parse_args()
 
+    _parts = []
+    if args.variant != "E":
+        _parts.append(args.variant)
+    if args.w_floor is not None:
+        _parts.append(f"wf{args.w_floor}")
+    tag = ("_" + "_".join(_parts)) if _parts else ""
     cells = _parse_cells(args)
     seeds = list(range(args.seeds))
     data = _load()
     outdir = os.path.join(_CSTR_DIR, "results")
     os.makedirs(outdir, exist_ok=True)
-    csv_path = os.path.join(outdir, "iterative_sweep.csv")
+    csv_path = os.path.join(outdir, f"iterative_sweep{tag}.csv")
     with open(csv_path, "w", newline="") as f:
         csv.writer(f).writerow(
             ["L", "H", "seed", "arm", "baseline_mse", "student_mse", "fgl_delta", "init_delta",
@@ -85,7 +93,7 @@ def main():
             res = run_iterative_distillation(
                 data, L=L, H=H, alpha=args.alpha, temperature=args.temperature,
                 num_bins=args.bins, epochs=args.epochs, round_epochs=args.round_epochs,
-                K=args.K, seed=s, verbose=False)
+                K=args.K, seed=s, variant=args.variant, w_floor=args.w_floor, verbose=False)
             for arm, r in res.items():
                 per_arm[arm].append(r["student_mse"])
                 curves_val[arm].append(r["mse_curve_val"])
@@ -104,10 +112,10 @@ def main():
               f"E_single={e_single:6.1f}  A_iter={a_iter:6.1f}  "
               f"(E_iter vs A_iter {rel:+.1f}%)", flush=True)
 
-    _report(cell_results, outdir)
+    _report(cell_results, outdir, tag)
 
 
-def _report(cell_results, outdir):
+def _report(cell_results, outdir, tag=""):
     print(f"\n{'=' * 70}\nE-iter 相对对照的 student MSE 下降 (%)  [+ = E-iter 更好]\n{'=' * 70}")
     print(f"{'L,H':>10} | {'vs A-single':>12} | {'vs E-single':>12} | {'vs A-iter':>10}")
     print("-" * 60)
@@ -118,11 +126,11 @@ def _report(cell_results, outdir):
         def rel(base):
             return (base - e_i) / base * 100 if base > 0 else float("nan")
         print(f"({L:>2},{H:<3})    | {rel(a_s):>+11.1f}% | {rel(e_s):>+11.1f}% | {rel(a_i):>+9.1f}%")
-    _plot_curves(cell_results, outdir)
-    print(f"\nCSV: {os.path.join(outdir, 'iterative_sweep.csv')}")
+    _plot_curves(cell_results, outdir, tag)
+    print(f"\nCSV: {os.path.join(outdir, f'iterative_sweep{tag}.csv')}")
 
 
-def _plot_curves(cell_results, outdir):
+def _plot_curves(cell_results, outdir, tag=""):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -145,7 +153,7 @@ def _plot_curves(cell_results, outdir):
         ax.legend(fontsize=8)
     fig.suptitle("Per-round val MSE by arm (lower = better; E-iter shape answers H1)")
     fig.tight_layout()
-    png = os.path.join(outdir, "iterative_curves.png")
+    png = os.path.join(outdir, f"iterative_curves{tag}.png")
     fig.savefig(png, dpi=120)
     print(f"逐轮曲线: {png}")
 

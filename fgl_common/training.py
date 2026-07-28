@@ -638,7 +638,7 @@ def _should_stop(mse_history, eps, N_stall, max_rounds):
 
 
 def _compute_arm_weights(variant, student, teacher, student_train_full,
-                         teacher_train_full, student_train_indices, L, H):
+                         teacher_train_full, student_train_indices, L, H, w_floor=None):
     """单臂逐样本蒸馏权重(对齐目标)。
 
     variant='A' -> 恒为 1.0(对照臂:从不更新权重)。
@@ -651,7 +651,7 @@ def _compute_arm_weights(variant, student, teacher, student_train_full,
     se = compute_per_sample_mse(student, student_train_full, L)
     te_raw = compute_per_sample_mse(teacher, teacher_train_full, L)
     te = {int(j - (H - 1)): e for j, e in te_raw.items()}
-    weights, _, _ = compute_weights(variant, se, te, student_train_indices)
+    weights, _, _ = compute_weights(variant, se, te, student_train_indices, w_floor=w_floor)
     return weights
 
 
@@ -659,7 +659,7 @@ def _iterate_student(student_0, teacher, variant, max_rounds,
                      student_train, teacher_train, student_val, student_test,
                      student_train_full, teacher_train_full, student_train_indices,
                      L, H, alpha, temperature, round_epochs, patience,
-                     eps, N_stall, lr, snapshot_fn=None):
+                     eps, N_stall, lr, snapshot_fn=None, w_floor=None):
     """单臂暖启动迭代蒸馏。
 
     student_0: 已训练的 round-0 student(共享,本函数不修改入参对象)。
@@ -686,7 +686,7 @@ def _iterate_student(student_0, teacher, variant, max_rounds,
     for r in range(1, max_rounds + 1):
         weights = _compute_arm_weights(variant, student, teacher,
                                        student_train_full, teacher_train_full,
-                                       student_train_indices, L, H)
+                                       student_train_indices, L, H, w_floor=w_floor)
         opt = optim.Adam(student.parameters(), lr=lr)
         stop = EarlyStopper(patience=patience)
         for _ in range(round_epochs):
@@ -738,7 +738,7 @@ def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_b
                                epochs=30, round_epochs=15, batch_size=64, patience=5,
                                K=5, eps=0.01, N_stall=2, seed=42, variant="E",
                                val_size=0.2, test_size=0.2, lr=1e-4, verbose=True,
-                               e_iter_snapshot_fn=None):
+                               e_iter_snapshot_fn=None, w_floor=None):
     """迭代(暖启动)自适应蒸馏,2×2 四臂因子设计(共享 round-0)。
 
     训一次 teacher / baseline / student_0(round-0,uniform KL),然后分支:
@@ -821,7 +821,7 @@ def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_b
                   student_train_full=student_train_full, teacher_train_full=teacher_train_full,
                   student_train_indices=student_train_indices, L=L, H=H, alpha=alpha,
                   temperature=temperature, round_epochs=round_epochs, patience=patience,
-                  eps=eps, N_stall=N_stall, lr=lr)
+                  eps=eps, N_stall=N_stall, lr=lr, w_floor=w_floor)
 
     def _arm(variant, max_rounds, snapshot_fn=None):
         if max_rounds == 0:

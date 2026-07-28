@@ -242,3 +242,16 @@ def test_compute_weights_E_soft_bounded_and_ordered():
     assert w[2] > w[3]    # 大正 gap (0.8) > 负 gap (-0.8)
     assert w[3] < 1.0     # 负 gap 样本拿到接近地板的低权重
     assert w[2] > w[0]    # 大正 gap > 零 gap
+
+
+def test_compute_weights_E_soft_w_floor_param():
+    """w_floor 参数抬高软地板:权重下界 ≈ w_floor。"""
+    indices = [0, 1, 2, 3]
+    se = {0: 0.1, 1: 0.5, 2: 0.9, 3: 0.1}
+    te = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.9}
+    w_default, _, _ = compute_weights('E-soft', se, te, indices)
+    w_hi, _, _ = compute_weights('E-soft', se, te, indices, w_floor=0.5)
+    # 抬高地板 → 最小权重上升
+    assert min(w_hi.values()) > min(w_default.values())
+    assert all(v >= 0.5 - 1e-6 for v in w_hi.values())   # 新下界 0.5
+    assert all(v <= 4.0 + 1e-6 for v in w_hi.values())    # 上界不变

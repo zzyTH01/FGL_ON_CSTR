@@ -66,9 +66,15 @@ def main():
     ap.add_argument("--tau", type=float, default=13.0)
     ap.add_argument("--n_points", type=int, default=10000)
     ap.add_argument("--variant", default="E", help="weighting variant: E / E-soft / C / D")
+    ap.add_argument("--w_floor", type=float, default=None, help="[E-soft] 软地板(默认 0.2)")
     args = ap.parse_args()
 
-    tag = "" if args.variant == "E" else f"_{args.variant}"
+    _parts = []
+    if args.variant != "E":
+        _parts.append(args.variant)
+    if args.w_floor is not None:
+        _parts.append(f"wf{args.w_floor}")
+    tag = ("_" + "_".join(_parts)) if _parts else ""
     cells = _parse_cells(args)
     seeds = list(range(args.seeds))
     data, lyap = generate_mg_data(tau=args.tau, n_points=args.n_points)
@@ -89,7 +95,8 @@ def main():
             res = run_iterative_distillation(
                 data, L=L, H=H, alpha=args.alpha, temperature=args.temperature,
                 num_bins=args.bins, epochs=args.epochs, round_epochs=args.round_epochs,
-                batch_size=args.batch_size, K=args.K, seed=s, variant=args.variant, verbose=False)
+                batch_size=args.batch_size, K=args.K, seed=s, variant=args.variant,
+                w_floor=args.w_floor, verbose=False)
             for arm, r in res.items():
                 per_arm[arm].append(r["student_mse"])
                 curves_val[arm].append(r["mse_curve_val"])

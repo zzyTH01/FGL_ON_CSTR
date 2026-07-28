@@ -61,7 +61,8 @@ def seq_KL(student_logits, teacher_logits, temperature, alpha, num_steps):
     return (1.0 - alpha) * kd
 
 
-def compute_weights(variant, student_errors, teacher_errors, student_train_indices):
+def compute_weights(variant, student_errors, teacher_errors, student_train_indices,
+                    w_floor=None):
     """Compute per-sample weights for the KL term.
 
     The weighting criterion is the **teacher–student MSE gap**: samples where the
@@ -116,13 +117,14 @@ def compute_weights(variant, student_errors, teacher_errors, student_train_indic
         p95 = np.percentile(raw, 95)
         normalized = np.clip(raw, 0.0, p95) / p95 * W_MAX if p95 > 1e-8 else np.ones(n)
     elif variant == 'E-soft':
-        # Sigmoid 软地板激活:w = w_floor + (W_MAX - w_floor)·σ((gap - c)/s)。
-        # 大正 gap → 饱和到 W_MAX(满档蒸馏,同 E);负 gap → 软地板 w_floor
+        # Sigmoid 软地板激活:w = wf + (W_MAX - wf)·σ((gap - c)/s)。
+        # 大正 gap → 饱和到 W_MAX(满档蒸馏,同 E);负 gap → 软地板 wf
         # (非零,老师信号不断流 → 不干涸);中间 S 形过渡。中心 c=中位数,
-        # 尺度 s=(p75-p25)/2。
-        w_floor, W_MAX = 0.2, 4.0
+        # 尺度 s=(p75-p25)/2。wf 由 w_floor 参数覆盖(默认 0.2)。
+        wf = 0.2 if w_floor is None else float(w_floor)
+        W_MAX = 4.0
         if raw.std() < 1e-8:
-            normalized = np.full(n, (w_floor + W_MAX) / 2.0)
+            normalized = np.full(n, (wf + W_MAX) / 2.0)
         else:
             c = float(np.median(raw))
             p25, p75 = np.percentile(raw, 25), np.percentile(raw, 75)
@@ -130,7 +132,7 @@ def compute_weights(variant, student_errors, teacher_errors, student_train_indic
             if s < 1e-8:
                 s = float(raw.std())
             sig = 1.0 / (1.0 + np.exp(-(raw - c) / s))
-            normalized = w_floor + (W_MAX - w_floor) * sig
+            normalized = wf + (W_MAX - wf) * sig
     else:  # B / C / D — gentle [0.2, 2.0] mapping
         p5, p95 = np.percentile(raw, 5), np.percentile(raw, 95)
         if p95 - p5 < 1e-8:
