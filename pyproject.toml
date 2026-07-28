@@ -26,4 +26,9 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 
+[tool.setuptools]
+# 显式声明唯一可导入包,避免 setuptools 自动发现时因 flat-layout(cstr/lorenz/
+# mackey_glass 等多顶层目录)报错——jitcdde 在仓库根 CWD 编译 C 扩展时会触发该检查。
+packages = ["fgl_common"]
+
 
