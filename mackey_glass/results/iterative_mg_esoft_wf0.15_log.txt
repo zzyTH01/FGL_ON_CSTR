@@ -1,0 +1,21 @@
+Uninstalled 1 package in 467ms
+Installed 1 package in 168ms
+[fgl] device = cpu
+Generating, compiling, and loading C code.
+Using default integration parameters.
+MG τ=13.0, Lyapunov=+0.000605, 10000 pts, variant=E-soft
+[3/9] L=4   H=7  : E_iter= 0.699  E_single= 2.342  A_iter= 0.692  (E_iter vs A_iter -1.1%)
+[6/9] L=4   H=10 : E_iter= 0.647  E_single= 1.802  A_iter= 0.711  (E_iter vs A_iter +9.0%)
+[9/9] L=13  H=7  : E_iter= 0.289  E_single= 0.338  A_iter= 0.296  (E_iter vs A_iter +2.4%)
+
+======================================================================
+E-iter 相对对照的 student MSE 下降 (%)  [+ = E-iter 更好]
+======================================================================
+       L,H |  vs A-single |  vs E-single |  vs A-iter
+------------------------------------------------------------
+( 4,7  )    |       +89.5% |       +70.1% |      -1.1%
+( 4,10 )    |       +82.1% |       +64.1% |      +9.0%
+(13,7  )    |       +26.6% |       +14.6% |      +2.4%
+逐轮曲线: /Users/gaozhanyuanzhu/Documents/科研——时序预测/FutureGuidedLearning-main/mackey_glass/results/iterative_mg_curves_E-soft_wf0.15.png
+
+CSV: /Users/gaozhanyuanzhu/Documents/科研——时序预测/FutureGuidedLearning-main/mackey_glass/results/iterative_mg_sweep_E-soft_wf0.15.csv
