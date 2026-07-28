@@ -636,6 +636,24 @@ def _should_stop(mse_history, eps, N_stall, max_rounds):
     return False, "continue"
 
 
+def _compute_arm_weights(variant, student, teacher, student_train_full,
+                         teacher_train_full, student_train_indices, L, H):
+    """单臂逐样本蒸馏权重(对齐目标)。
+
+    variant='A' -> 恒为 1.0(对照臂:从不更新权重)。
+    variant='E' -> max(0, se_student − se_teacher) 差距,零地板放大到 [0, W_MAX=4]
+                   (由 compute_weights 处理)。
+    teacher loader 因 offset=H−1,其原始 idx j 对齐到 student idx j−(H−1),此处重映射。
+    """
+    if variant == "A":
+        return {idx: 1.0 for idx in student_train_indices}
+    se = compute_per_sample_mse(student, student_train_full, L)
+    te_raw = compute_per_sample_mse(teacher, teacher_train_full, L)
+    te = {int(j - (H - 1)): e for j, e in te_raw.items()}
+    weights, _, _ = compute_weights("E", se, te, student_train_indices)
+    return weights
+
+
 # ================================================================
 #  Inference-time adaptive blending — independent flow
 # ================================================================
