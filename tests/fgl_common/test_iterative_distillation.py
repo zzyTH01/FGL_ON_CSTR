@@ -180,3 +180,46 @@ def test_iterate_student_maxrounds0_is_round0(tiny_setup):
     assert len(res["mse_curve_val"]) == 1
     # 与输入 student_0 的 val MSE 一致(未训练)
     assert abs(res["mse_curve_val"][0] - evaluate(s["student_0"], s["student_val"], s["L"])) < 1e-4
+
+
+# ==================== Task 4: run_iterative_distillation ====================
+from fgl_common import run_iterative_distillation
+
+
+def _tiny_data():
+    return _tiny_series(n=400)
+
+
+def test_run_iterative_four_arms_structure():
+    res = run_iterative_distillation(
+        _tiny_data(), L=20, H=15, num_bins=50, epochs=3, round_epochs=2,
+        batch_size=8, K=2, seed=0, verbose=False)
+    assert set(res) == {"A_single", "E_single", "A_iter", "E_iter"}
+    expected = {"teacher_mse", "baseline_mse", "student_mse", "fgl_delta", "init_delta",
+                "rounds_used", "total_epochs", "mse_curve_val", "mse_curve_test"}
+    for arm, r in res.items():
+        assert expected <= set(r), f"{arm} missing keys"
+
+
+def test_all_arms_share_round0():
+    res = run_iterative_distillation(
+        _tiny_data(), L=20, H=15, num_bins=50, epochs=3, round_epochs=2,
+        batch_size=8, K=2, seed=0, verbose=False)
+    a0 = res["A_single"]["mse_curve_test"][0]
+    for arm in ("E_single", "A_iter", "E_iter"):
+        assert abs(res[arm]["mse_curve_test"][0] - a0) < 1e-6, f"{arm} round-0 differs"
+
+
+def test_A_single_is_round0_only():
+    res = run_iterative_distillation(
+        _tiny_data(), L=20, H=15, num_bins=50, epochs=3, round_epochs=2,
+        batch_size=8, K=2, seed=0, verbose=False)
+    assert res["A_single"]["rounds_used"] == 0
+    assert len(res["A_single"]["mse_curve_val"]) == 1
+
+
+def test_E_single_uses_one_round():
+    res = run_iterative_distillation(
+        _tiny_data(), L=20, H=15, num_bins=50, epochs=3, round_epochs=2,
+        batch_size=8, K=2, seed=0, verbose=False)
+    assert res["E_single"]["rounds_used"] == 1

@@ -728,6 +728,125 @@ def _iterate_student(student_0, teacher, variant, max_rounds,
             "student": student}
 
 
+def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
+                               epochs=30, round_epochs=15, batch_size=64, patience=5,
+                               K=5, eps=0.01, N_stall=2, seed=42, variant="E",
+                               val_size=0.2, test_size=0.2, lr=1e-4, verbose=True):
+    """迭代(暖启动)自适应蒸馏,2×2 四臂因子设计(共享 round-0)。
+
+    训一次 teacher / baseline / student_0(round-0,uniform KL),然后分支:
+      A_single = student_0 本身(不迭代)。
+      E_single = 暖启 1 轮,E 权重(来自 student_0)。
+      A_iter   = 暖启 ≤K 轮,权重恒均匀(归因对照)。
+      E_iter   = 暖启 ≤K 轮,每轮重估 E 权重(新方法)。
+    停止规则在 val MSE,返回每臂 keep-best-by-val 的 student,报告其 test MSE。
+    """
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    hidden, output, layers = 128, num_bins, 2
+    ce = torch.nn.CrossEntropyLoss()
+
+    bin_edges, _, _ = compute_shared_bin_edges(data, L, num_bins)
+    teacher_train, teacher_val, teacher_test, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=1, num_bins=num_bins,
+        val_size=val_size, test_size=test_size, offset=H - 1, batch_size=batch_size, bin_edges=bin_edges)
+    student_train, student_val, student_test, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=H, num_bins=num_bins,
+        val_size=val_size, test_size=test_size, offset=0, batch_size=batch_size, bin_edges=bin_edges)
+    student_train_full, _, _, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=H, num_bins=num_bins,
+        val_size=val_size, test_size=test_size, offset=0, batch_size=1, bin_edges=bin_edges)
+    teacher_train_full, _, _, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=1, num_bins=num_bins,
+        val_size=val_size, test_size=test_size, offset=H - 1, batch_size=1, bin_edges=bin_edges)
+    student_train_indices = [idx[0].item() for idx, _, _ in student_train_full]
+
+    if verbose:
+        print(f"  [iter] L={L} H={H} α={alpha} T={temperature} K={K} seed={seed}")
+
+    def _train_simple(model, loader, vloader):
+        opt = optim.Adam(model.parameters(), lr=lr)
+        stop = EarlyStopper(patience=patience)
+        for _ in range(epochs):
+            model.train()
+            for _, x, y in loader:
+                x = x.float().to(device).view(-1, 1, L)
+                opt.zero_grad(); ce(model(x), y.long().to(device)).backward(); opt.step()
+            model.eval()
+            with torch.no_grad():
+                vl = sum(ce(model(x.float().to(device).view(-1, 1, L)), y.long().to(device)).item()
+                         for _, x, y in vloader) / len(vloader)
+            if stop.step(vl, model):
+                break
+        stop.restore(model); model.eval()
+        return model
+
+    teacher = _train_simple(RNN(L, hidden, output, layers).to(device), teacher_train, teacher_val)
+    baseline = _train_simple(RNN(L, hidden, output, layers).to(device), student_train, student_val)
+
+    # round-0 student: from scratch, uniform KL(标准 FGL)
+    student_0 = RNN(L, hidden, output, layers).to(device)
+    opt = optim.Adam(student_0.parameters(), lr=lr)
+    stop = EarlyStopper(patience=patience)
+    for _ in range(epochs):
+        student_0.train()
+        for (_, xs, ys), (_, xt, _) in zip(student_train, teacher_train):
+            xs = xs.float().to(device).view(-1, 1, L)
+            out = student_0(xs)
+            xt = xt.float().to(device).view(-1, 1, L)
+            with torch.no_grad():
+                tlog = teacher(xt)
+            loss = alpha * ce(out, ys.long().to(device)) + KL(out, tlog, temperature, alpha)
+            opt.zero_grad(); loss.backward(); opt.step()
+        student_0.eval()
+        with torch.no_grad():
+            vl = sum(ce(student_0(x.float().to(device).view(-1, 1, L)), y.long().to(device)).item()
+                     for _, x, y in student_val) / len(student_val)
+        if stop.step(vl, student_0):
+            break
+    stop.restore(student_0); student_0.eval()
+
+    teacher_mse = evaluate(teacher, teacher_test, L)
+    baseline_mse = evaluate(baseline, student_test, L)
+
+    common = dict(student_train=student_train, teacher_train=teacher_train,
+                  student_val=student_val, student_test=student_test,
+                  student_train_full=student_train_full, teacher_train_full=teacher_train_full,
+                  student_train_indices=student_train_indices, L=L, H=H, alpha=alpha,
+                  temperature=temperature, round_epochs=round_epochs, patience=patience,
+                  eps=eps, N_stall=N_stall, lr=lr)
+
+    def _arm(variant, max_rounds):
+        if max_rounds == 0:
+            return {"rounds_used": 0, "total_epochs": 0,
+                    "mse_curve_val": [evaluate(student_0, student_val, L)],
+                    "mse_curve_test": [evaluate(student_0, student_test, L)],
+                    "student": student_0}
+        return _iterate_student(student_0, teacher, variant, max_rounds, **common)
+
+    arms = {
+        "A_single": _arm("A", 0),
+        "E_single": _arm("E", 1),
+        "A_iter":   _arm("A", K),
+        "E_iter":   _arm("E", K),
+    }
+
+    results = {}
+    for name, a in arms.items():
+        s_mse = evaluate(a["student"], student_test, L)
+        init_mse = arms["A_single"]["mse_curve_test"][0]  # round-0 test MSE
+        fgl_delta = (baseline_mse - s_mse) / baseline_mse * 100 if baseline_mse > 0 else 0
+        init_delta = (init_mse - s_mse) / init_mse * 100 if init_mse > 0 else 0
+        results[name] = {"teacher_mse": teacher_mse, "baseline_mse": baseline_mse,
+                         "student_mse": s_mse, "fgl_delta": fgl_delta, "init_delta": init_delta,
+                         "rounds_used": a["rounds_used"], "total_epochs": a["total_epochs"],
+                         "mse_curve_val": a["mse_curve_val"], "mse_curve_test": a["mse_curve_test"]}
+        if verbose:
+            print(f"    {name:9s}: student_mse={s_mse:.1f}  Δbase={fgl_delta:+.1f}%  "
+                  f"Δinit={init_delta:+.1f}%  rounds={a['rounds_used']}  ep={a['total_epochs']}")
+    return results
+
+
 # ================================================================
 #  Inference-time adaptive blending — independent flow
 # ================================================================
