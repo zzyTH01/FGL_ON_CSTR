@@ -600,6 +600,43 @@ def run_adaptive_weight(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
 
 
 # ================================================================
+#  Iterative adaptive distillation — helpers
+# ================================================================
+def _should_stop(mse_history, eps, N_stall, max_rounds):
+    """迭代蒸馏停止规则(纯函数)。
+
+    Args:
+        mse_history: 逐轮 val MSE 列表;index 0 = round-0(初始 student),
+            index t = 第 t 轮后。len == 已完成轮数 + 1。
+        eps: 相对改进低于此值视为"停滞"。
+        N_stall: 连续停滞达此次数则停。
+        max_rounds: 轮数上限(K);t >= max_rounds 即停。
+    Returns:
+        (stop, reason),reason ∈ {"cap","degradation","stall","continue"}。
+    """
+    t = len(mse_history) - 1
+    if t >= max_rounds:
+        return True, "cap"
+    if t == 0:
+        return False, "continue"
+    cur, prev = mse_history[t], mse_history[t - 1]
+    if cur > prev:
+        return True, "degradation"
+    stall = 0
+    for s in range(t, 0, -1):
+        p, c = mse_history[s - 1], mse_history[s]
+        if p <= 0 or c > p:
+            break
+        if (p - c) / p < eps:
+            stall += 1
+        else:
+            break
+    if stall >= N_stall:
+        return True, "stall"
+    return False, "continue"
+
+
+# ================================================================
 #  Inference-time adaptive blending — independent flow
 # ================================================================
 def run_adaptive_inference(data, student_horizon=12, base_alpha=0.5, num_bins=50,
