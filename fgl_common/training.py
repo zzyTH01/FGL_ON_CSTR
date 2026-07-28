@@ -659,12 +659,14 @@ def _iterate_student(student_0, teacher, variant, max_rounds,
                      student_train, teacher_train, student_val, student_test,
                      student_train_full, teacher_train_full, student_train_indices,
                      L, H, alpha, temperature, round_epochs, patience,
-                     eps, N_stall, lr):
+                     eps, N_stall, lr, snapshot_fn=None):
     """单臂暖启动迭代蒸馏。
 
     student_0: 已训练的 round-0 student(共享,本函数不修改入参对象)。
     variant: 'A'(每轮恒均匀)或 'E'(每轮按当前 student 重估 gap 权重)。
     max_rounds: 该臂最大轮数(E-single=1;iter 臂=K)。
+    snapshot_fn: 可选回调 `fn(student, round_idx, mse_val, mse_test)`,在每轮评估后
+        (含 round-0)调用一次,供可视化捕获逐轮预测。默认 None(无行为变化)。
     返回 dict: {rounds_used, total_epochs, mse_curve_val, mse_curve_test, student}。
     student 为 keep-best-by-val 的模型实例。
     """
@@ -674,6 +676,8 @@ def _iterate_student(student_0, teacher, variant, max_rounds,
 
     mse_curve_val = [evaluate(student, student_val, L)]
     mse_curve_test = [evaluate(student, student_test, L)]
+    if snapshot_fn:
+        snapshot_fn(student, 0, mse_curve_val[0], mse_curve_test[0])
     best_val = mse_curve_val[0]
     best_state = {k: v.clone() for k, v in student.state_dict().items()}
     total_epochs = 0
@@ -712,6 +716,8 @@ def _iterate_student(student_0, teacher, variant, max_rounds,
         mv = evaluate(student, student_val, L)
         mse_curve_val.append(mv)
         mse_curve_test.append(evaluate(student, student_test, L))
+        if snapshot_fn:
+            snapshot_fn(student, r, mv, mse_curve_test[-1])
         if mv < best_val:
             best_val = mv
             best_state = {k: v.clone() for k, v in student.state_dict().items()}
@@ -731,7 +737,8 @@ def _iterate_student(student_0, teacher, variant, max_rounds,
 def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
                                epochs=30, round_epochs=15, batch_size=64, patience=5,
                                K=5, eps=0.01, N_stall=2, seed=42, variant="E",
-                               val_size=0.2, test_size=0.2, lr=1e-4, verbose=True):
+                               val_size=0.2, test_size=0.2, lr=1e-4, verbose=True,
+                               e_iter_snapshot_fn=None):
     """迭代(暖启动)自适应蒸馏,2×2 四臂因子设计(共享 round-0)。
 
     训一次 teacher / baseline / student_0(round-0,uniform KL),然后分支:
@@ -816,19 +823,20 @@ def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_b
                   temperature=temperature, round_epochs=round_epochs, patience=patience,
                   eps=eps, N_stall=N_stall, lr=lr)
 
-    def _arm(variant, max_rounds):
+    def _arm(variant, max_rounds, snapshot_fn=None):
         if max_rounds == 0:
             return {"rounds_used": 0, "total_epochs": 0,
                     "mse_curve_val": [evaluate(student_0, student_val, L)],
                     "mse_curve_test": [evaluate(student_0, student_test, L)],
                     "student": student_0}
-        return _iterate_student(student_0, teacher, variant, max_rounds, **common)
+        return _iterate_student(student_0, teacher, variant, max_rounds,
+                                snapshot_fn=snapshot_fn, **common)
 
     arms = {
         "A_single": _arm("A", 0),
         "E_single": _arm("E", 1),
         "A_iter":   _arm("A", K),
-        "E_iter":   _arm("E", K),
+        "E_iter":   _arm("E", K, snapshot_fn=e_iter_snapshot_fn),
     }
 
     results = {}
