@@ -65,13 +65,15 @@ def main():
     ap.add_argument("--batch_size", type=int, default=128)
     ap.add_argument("--tau", type=float, default=13.0)
     ap.add_argument("--n_points", type=int, default=10000)
+    ap.add_argument("--variant", default="E", help="weighting variant: E / E-soft / C / D")
     args = ap.parse_args()
 
+    tag = "" if args.variant == "E" else f"_{args.variant}"
     cells = _parse_cells(args)
     seeds = list(range(args.seeds))
     data, lyap = generate_mg_data(tau=args.tau, n_points=args.n_points)
-    print(f"MG τ={args.tau}, Lyapunov={lyap:+.6f}, {args.n_points} pts", flush=True)
-    csv_path = os.path.join(_RESULTS_DIR, "iterative_mg_sweep.csv")
+    print(f"MG τ={args.tau}, Lyapunov={lyap:+.6f}, {args.n_points} pts, variant={args.variant}", flush=True)
+    csv_path = os.path.join(_RESULTS_DIR, f"iterative_mg_sweep{tag}.csv")
     with open(csv_path, "w", newline="") as f:
         csv.writer(f).writerow(
             ["L", "H", "seed", "arm", "baseline_mse", "student_mse", "fgl_delta", "init_delta",
@@ -87,7 +89,7 @@ def main():
             res = run_iterative_distillation(
                 data, L=L, H=H, alpha=args.alpha, temperature=args.temperature,
                 num_bins=args.bins, epochs=args.epochs, round_epochs=args.round_epochs,
-                batch_size=args.batch_size, K=args.K, seed=s, verbose=False)
+                batch_size=args.batch_size, K=args.K, seed=s, variant=args.variant, verbose=False)
             for arm, r in res.items():
                 per_arm[arm].append(r["student_mse"])
                 curves_val[arm].append(r["mse_curve_val"])
@@ -106,10 +108,10 @@ def main():
               f"E_single={e_single:6.3f}  A_iter={a_iter:6.3f}  "
               f"(E_iter vs A_iter {rel:+.1f}%)", flush=True)
 
-    _report(cell_results)
+    _report(cell_results, tag)
 
 
-def _report(cell_results):
+def _report(cell_results, tag=""):
     print(f"\n{'=' * 70}\nE-iter 相对对照的 student MSE 下降 (%)  [+ = E-iter 更好]\n{'=' * 70}")
     print(f"{'L,H':>10} | {'vs A-single':>12} | {'vs E-single':>12} | {'vs A-iter':>10}")
     print("-" * 60)
@@ -120,11 +122,11 @@ def _report(cell_results):
         def rel(base):
             return (base - e_i) / base * 100 if base > 0 else float("nan")
         print(f"({L:>2},{H:<3})    | {rel(a_s):>+11.1f}% | {rel(e_s):>+11.1f}% | {rel(a_i):>+9.1f}%")
-    _plot_curves(cell_results)
-    print(f"\nCSV: {os.path.join(_RESULTS_DIR, 'iterative_mg_sweep.csv')}")
+    _plot_curves(cell_results, tag)
+    print(f"\nCSV: {os.path.join(_RESULTS_DIR, f'iterative_mg_sweep{tag}.csv')}")
 
 
-def _plot_curves(cell_results):
+def _plot_curves(cell_results, tag=""):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -146,7 +148,7 @@ def _plot_curves(cell_results):
         ax.legend(fontsize=8)
     fig.suptitle("MG τ=13: Per-round val MSE by arm (E-iter shape answers H1)")
     fig.tight_layout()
-    png = os.path.join(_RESULTS_DIR, "iterative_mg_curves.png")
+    png = os.path.join(_RESULTS_DIR, f"iterative_mg_curves{tag}.png")
     fig.savefig(png, dpi=120)
     print(f"逐轮曲线: {png}")
 
