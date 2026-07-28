@@ -1,0 +1,62 @@
+Uninstalled 1 package in 711ms
+Installed 1 package in 154ms
+[fgl] device = cpu
+[2/50] L=8   H=5  : E_iter= 107.6  E_single= 108.1  A_iter= 107.7  (E_iter vs A_iter +0.1%)
+[4/50] L=8   H=15 : E_iter=  33.1  E_single=  65.8  A_iter=  32.9  (E_iter vs A_iter -0.8%)
+[6/50] L=8   H=30 : E_iter=  30.8  E_single=  57.5  A_iter=  30.3  (E_iter vs A_iter -1.6%)
+[8/50] L=8   H=45 : E_iter=  44.5  E_single=  79.1  A_iter=  56.0  (E_iter vs A_iter +20.6%)
+[10/50] L=8   H=60 : E_iter=  66.6  E_single= 110.5  A_iter=  94.6  (E_iter vs A_iter +29.5%)
+[12/50] L=20  H=5  : E_iter=  30.0  E_single=  30.6  A_iter=  30.3  (E_iter vs A_iter +0.9%)
+[14/50] L=20  H=15 : E_iter=  30.8  E_single=  31.0  A_iter=  30.1  (E_iter vs A_iter -2.2%)
+[16/50] L=20  H=30 : E_iter=  43.6  E_single=  61.1  A_iter=  60.7  (E_iter vs A_iter +28.1%)
+[18/50] L=20  H=45 : E_iter=  43.5  E_single=  70.7  A_iter=  56.6  (E_iter vs A_iter +23.1%)
+[20/50] L=20  H=60 : E_iter=  14.5  E_single=  15.0  A_iter=  14.4  (E_iter vs A_iter -0.7%)
+[22/50] L=35  H=5  : E_iter=  29.7  E_single=  29.7  A_iter=  29.7  (E_iter vs A_iter -0.2%)
+[24/50] L=35  H=15 : E_iter=  36.5  E_single=  57.0  A_iter=  35.8  (E_iter vs A_iter -2.0%)
+[26/50] L=35  H=30 : E_iter=  61.6  E_single=  74.0  A_iter=  84.1  (E_iter vs A_iter +26.7%)
+[28/50] L=35  H=45 : E_iter=  14.6  E_single=  14.6  A_iter=  14.4  (E_iter vs A_iter -1.1%)
+[30/50] L=35  H=60 : E_iter=  14.1  E_single=  14.2  A_iter=  14.1  (E_iter vs A_iter +0.1%)
+[32/50] L=50  H=5  : E_iter=  30.0  E_single=  36.1  A_iter=  29.8  (E_iter vs A_iter -0.9%)
+[34/50] L=50  H=15 : E_iter=  50.0  E_single=  56.6  A_iter=  49.1  (E_iter vs A_iter -1.7%)
+[36/50] L=50  H=30 : E_iter=  14.6  E_single=  15.0  A_iter=  14.3  (E_iter vs A_iter -2.7%)
+[38/50] L=50  H=45 : E_iter=  14.1  E_single=  14.2  A_iter=  14.1  (E_iter vs A_iter +0.1%)
+[40/50] L=50  H=60 : E_iter=  14.1  E_single=  14.1  A_iter=  14.1  (E_iter vs A_iter -0.3%)
+[42/50] L=72  H=5  : E_iter=   7.1  E_single=  14.1  A_iter=  12.4  (E_iter vs A_iter +42.4%)
+[44/50] L=72  H=15 : E_iter=  14.1  E_single=  14.1  A_iter=  14.1  (E_iter vs A_iter +0.1%)
+[46/50] L=72  H=30 : E_iter=  14.1  E_single=  14.1  A_iter=  14.1  (E_iter vs A_iter -0.2%)
+[48/50] L=72  H=45 : E_iter=  14.1  E_single=  14.1  A_iter=  14.1  (E_iter vs A_iter -0.1%)
+[50/50] L=72  H=60 : E_iter=  12.0  E_single=  12.0  A_iter=  12.0  (E_iter vs A_iter -0.2%)
+
+======================================================================
+E-iter 相对对照的 student MSE 下降 (%)  [+ = E-iter 更好]
+======================================================================
+       L,H |  vs A-single |  vs E-single |  vs A-iter
+------------------------------------------------------------
+( 8,5  )    |        +1.2% |        +0.4% |      +0.1%
+( 8,15 )    |       +71.6% |       +49.6% |      -0.8%
+( 8,30 )    |       +76.7% |       +46.5% |      -1.6%
+( 8,45 )    |       +65.0% |       +43.8% |     +20.6%
+( 8,60 )    |       +54.3% |       +39.7% |     +29.5%
+(20,5  )    |       +71.9% |        +1.9% |      +0.9%
+(20,15 )    |       +71.7% |        +0.8% |      -2.2%
+(20,30 )    |       +65.8% |       +28.6% |     +28.1%
+(20,45 )    |       +67.8% |       +38.4% |     +23.1%
+(20,60 )    |       +39.7% |        +3.1% |      -0.7%
+(35,5  )    |       +72.1% |        -0.1% |      -0.2%
+(35,15 )    |       +66.6% |       +35.9% |      -2.0%
+(35,30 )    |       +48.7% |       +16.7% |     +26.7%
+(35,45 )    |        +4.6% |        +0.1% |      -1.1%
+(35,60 )    |       +51.9% |        +0.9% |      +0.1%
+(50,5  )    |       +69.9% |       +16.7% |      -0.9%
+(50,15 )    |       +57.8% |       +11.8% |      -1.7%
+(50,30 )    |       +51.0% |        +2.5% |      -2.7%
+(50,45 )    |       +61.8% |        +0.5% |      +0.1%
+(50,60 )    |       +67.7% |        -0.1% |      -0.3%
+(72,5  )    |       +50.4% |       +49.5% |     +42.4%
+(72,15 )    |        +2.3% |        +0.5% |      +0.1%
+(72,30 )    |        +1.8% |        +0.0% |      -0.2%
+(72,45 )    |        +1.8% |        +0.0% |      -0.1%
+(72,60 )    |        +2.9% |        -0.1% |      -0.2%
+逐轮曲线: /Users/gaozhanyuanzhu/Documents/科研——时序预测/FutureGuidedLearning-main/cstr/results/iterative_curves.png
+
+CSV: /Users/gaozhanyuanzhu/Documents/科研——时序预测/FutureGuidedLearning-main/cstr/results/iterative_sweep.csv
