@@ -30,6 +30,7 @@ if _REPO_ROOT not in sys.path:
 from fgl_common import (  # noqa: E402
     RNN, LSTMModel,
     run_fgl_experiment, run_adaptive_weight, run_adaptive_inference, run_seq2seq,
+    run_iterative_distillation,
     run_lh_sweep,
 )
 
@@ -136,6 +137,42 @@ def run_adaptive_weight_exp(args):
               f"vs initStudent Δ={ini.mean():+.1f}%±{_sd(ini):.1f}  (n={len(fgl)})")
 
 
+def run_iterative_distill_exp(args):
+    """迭代自适应蒸馏 4 臂对比(A-single / E-single / A-iter / E-iter)。"""
+    data = _load_data(args.dataset)
+    n_seeds = args.seeds if args.seeds else 3
+    rows = []
+    for s in range(n_seeds):
+        arms = run_iterative_distillation(
+            data, L=args.L, H=args.H, alpha=args.alpha, temperature=args.temperature,
+            num_bins=args.bins, epochs=args.epochs, round_epochs=args.round_epochs,
+            batch_size=args.batch_size, K=args.K, patience=args.patience, seed=s, verbose=False)
+        for arm, r in arms.items():
+            rows.append({"seed": s, "arm": arm, "student_mse": r["student_mse"],
+                         "baseline_mse": r["baseline_mse"], "fgl_delta": r["fgl_delta"],
+                         "init_delta": r["init_delta"], "rounds_used": r["rounds_used"]})
+
+    print(f"\n{'=' * 60}\nSUMMARY: iterative_distill (L={args.L} H={args.H})\n{'=' * 60}")
+    from collections import defaultdict
+    agg = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        for k in ("student_mse", "fgl_delta", "init_delta"):
+            agg[r["arm"]][k].append(r[k])
+
+    def _sd(a):
+        a = np.array(a); return a.std(ddof=1) if len(a) > 1 else 0.0
+
+    for arm in ("A_single", "E_single", "A_iter", "E_iter"):
+        if arm not in agg:
+            continue
+        sm = np.array(agg[arm]["student_mse"])
+        fd = np.array(agg[arm]["fgl_delta"])
+        idt = np.array(agg[arm]["init_delta"])
+        print(f"  {arm:9s}: student_mse={sm.mean():.1f}±{_sd(sm):.1f}  "
+              f"Δbase={fd.mean():+.1f}%±{_sd(fd):.1f}  "
+              f"Δinit={idt.mean():+.1f}%±{_sd(idt):.1f}  (n={len(sm)})")
+
+
 def run_lh_sweep_exp(args):
     """对应 cstr/exp/fgl_cstr_lh_sweep.py:L×H 网格扫描(主线)。"""
     data = _load_data(args.dataset)
@@ -169,6 +206,7 @@ EXPERIMENTS = {
     "seq2seq":         dict(fn=run_seq2seq_exp,     enabled=False, note="多步序列预测 —— 失败"),
     "adaptive":        dict(fn=run_adaptive,        enabled=False, note="推理时 teacher-student 融合 —— 失败"),
     "adaptive_weight": dict(fn=run_adaptive_weight_exp, enabled=False, note="自适应蒸馏权重(teacher−student MSE 差距)A~E;E=零地板放大版,实测有效(L20H15)"),
+    "iterative_distill": dict(fn=run_iterative_distill_exp, enabled=False, note="迭代自适应蒸馏 4 臂(A-single/E-single/A-iter/E-iter);Phase 0 先跑典型点"),
     "lh_sweep":        dict(fn=run_lh_sweep_exp,    enabled=True,  note="L×H 网格扫描(主线)"),
 }
 
@@ -192,6 +230,8 @@ def _add_common_args(p):
     p.add_argument("--teacher_steps", type=int, default=10, help="[seq2seq] 教师步数 K")
     p.add_argument("--variants", type=str, default=None, help="[adaptive_weight] 变体,如 A,B,C")
     p.add_argument("--seeds", type=int, default=None, help="[adaptive_weight/lh_sweep] 种子数量")
+    p.add_argument("--round_epochs", type=int, default=15, help="[iterative_distill] 每轮 epoch")
+    p.add_argument("--K", type=int, default=5, help="[iterative_distill] 最大迭代轮数")
     p.add_argument("--L_values", type=str, default=None, help="[lh_sweep] L 取值,逗号分隔")
     p.add_argument("--H_values", type=str, default=None, help="[lh_sweep] H 取值,逗号分隔")
 
