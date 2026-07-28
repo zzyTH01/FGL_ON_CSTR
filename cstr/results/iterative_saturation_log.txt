@@ -1,0 +1,16 @@
+Uninstalled 1 package in 621ms
+Installed 1 package in 186ms
+[fgl] device = cpu
+[3/6] L=20  H=15 : E_iter=  30.1  E_single= 108.1  A_iter=  48.1  (E_iter vs A_iter +37.4%)
+[6/6] L=8   H=30 : E_iter=  22.5  E_single= 139.3  A_iter=  39.1  (E_iter vs A_iter +42.4%)
+
+======================================================================
+E-iter 相对对照的 student MSE 下降 (%)  [+ = E-iter 更好]
+======================================================================
+       L,H |  vs A-single |  vs E-single |  vs A-iter
+------------------------------------------------------------
+(20,15 )    |       +81.8% |       +72.2% |     +37.4%
+( 8,30 )    |       +85.6% |       +83.8% |     +42.4%
+逐轮曲线: /Users/gaozhanyuanzhu/Documents/科研——时序预测/FutureGuidedLearning-main/cstr/results/iterative_curves.png
+
+CSV: /Users/gaozhanyuanzhu/Documents/科研——时序预测/FutureGuidedLearning-main/cstr/results/iterative_sweep.csv

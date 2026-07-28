@@ -1,7 +1,8 @@
 # 迭代自适应蒸馏 — Phase 0 试点结果(2026-07-28)
 
 > 对应 spec `docs/superpowers/specs/2026-07-28-iterative-adaptive-distillation-design.md` §7 Phase 0。
-> 数据:`cstr/results/iterative_sweep.csv` + `iterative_curves.png` + `iterative_phase0_log.txt`。
+> Phase 0(K=3)数据:逐轮数值已收录于本文表格(`cstr/results/iterative_phase0_log.txt` 留有运行日志;原始 K=3 CSV 被 K=15 探索覆盖)。
+> 饱和探索(K=15)数据:`cstr/results/iterative_saturation_sweep.csv` + `iterative_saturation_curves.png` + `iterative_saturation_log.txt`。
 
 ## 设置
 
@@ -61,13 +62,41 @@ P3 L72H15:   36.9 →  14.6 →  14.4 → 14.4   与 E_iter 完全一致(地板�
 
 **✅ 放行 Phase 1。**
 
+## 饱和分析(K=15 探索):迭代到达地板,而非更低地板
+
+Phase 0 的 K=3 曲线在 round 3 仍未饱和(P1/P2 仍在降),故把 K 拉到 15 让停止规则自然触发,考察两个有空间点的真实饱和值与最大降幅。**用"每 seed 最小 test MSE"作鲁棒口径**(后期轮的均值会被仅存的单个 seed 带偏——见下)。
+
+### 饱和值与最大变化量
+
+| cell | round-0 MSE | E_iter 饱和值(每 seed 最小,中位数) | 最大变化量 | 饱和轮 |
+|------|---:|---:|---:|---|
+| L=20,H=15 | ~166 | **~30**(三 seed 一致 [30.1, 30.3, 29.9]) | **≈136(降 82%)** | round 5-6 |
+| L=8,H=30 | ~156 | **~32**(中位数 [32.1, 1.4, 34.0]) | **≈124(降 80%)** | round 3-5 |
+
+### ⚠️ 1.4 是单 seed 异常,非可复现饱和值
+
+L8H30 仅 seed 1 在 round 8 撞到 test MSE=1.4(val 同为 1.5),seed 0/2 在 round 4-6 停在 32-35。CSTR 是周期信号、val/test 为相邻窗口分布近乎相同,keep-best-by-val 实际等同在 test 上挑最优,8 轮暖启动让 seed 1 过拟合到近完美。**鲁棒饱和值取 ~32,不取 1.4。** 这也提示:周期系统上 val≈test,逐轮 keep-best 有过拟合 test 的风险,Phase 1 需关注。
+
+### 关键修正:E_iter 优势是"可靠 + 更快到达地板",不是"更低地板"
+
+A_iter(纯多训、同预算、不换权重)每 seed 最小 test MSE:
+- L20H15:[30.2, **57.1, 57.0**] → 中位数 57。seed 0 也到了 30,但 **2/3 seed 因均匀训练 plateau 触发停滞**而卡在 57。
+- L8H30:[30.3, 56.5, 30.3] → 中位数 30,与 E_iter(~32)基本相同。
+
+**当 A_iter 真正收敛时,它达到与 E_iter 相同的地板(~30)**;E_iter 的真正价值是**所有 seed 都稳定收敛到地板**(L20H15 三 seed 全到 30,而 A_iter 三 seed 中两个卡在 57)+ **收敛更快**。
+
+### 对 §归因 的修正
+
+Phase 0 报的 "E_iter vs A_iter = −31%/−35%" 是 **K=3 时点**的差异——那时 E_iter 走得更快、A_iter 尚未收敛或已停滞。**到饱和后地板接近**(~30 vs ~30-57)。故方法贡献应表述为:**迭代 E 权重可靠地把 student 推到离散化地板(~30)且收敛更快**,而非"达到比均匀训练更低的地板"。这仍是有价值的结论(鲁棒性 + 收敛速度),但口径需修正,勿夸大为"大幅降 MSE"。
+
 ## 局限与 Phase 1 待办
 
 1. **仅 n=3 seeds**(试点):需 Phase 1 锚点 n=10 做配对显著性(E_iter vs A_iter 配对 t / Wilcoxon)。
-2. **K=3 可能不足**:P1/P2 曲线 round 3 仍在降,Phase 1 用 K=5 可能进一步提升;同时观察是否在 round 4-5 出现饱和或退化。
-3. **方差未量化**:30~35% 的净增益需 ±std 报告;单点 CV 待查。
-4. **E_iter vs A_single 的 −61~70% 含大量"训练量"成分**(A_iter vs A_single 也达 −33~62%);对外应主推 **E_iter vs A_iter(净迭代效应,30~35%)** 与 **E_iter vs E_single(迭代 vs 一发,~55%)** 两个口径,勿用 vs A-single 夸大。
+2. **K=3 可能不足**:P1/P2 曲线 round 3 仍在降;K=15 探索显示 ~round 5-6 饱和、L8H30 seed 1 round 8 才触底。Phase 1 取 K=5-8 较合理。
+3. **方差/鲁棒性**:饱和分析揭示 A_iter 高方差(L20H15 三 seed 最小值 30/57/57),需 ±std 与 per-seed 报告;E_iter 跨 seed 一致性更好。
+4. **val≈test 过拟合风险**(周期系统):L8H30 seed 1 的 1.4 异常源于 keep-best-by-val 在 val/test 同分布时等同挑 test 最优。Phase 1 应加一个独立 holdout 或改用 round-固定策略对照。
+5. **E_iter vs A_single 的 −61~70% 含大量"训练量"成分**;对外应主推 **E_iter vs A_iter(净迭代效应,K=3 时点 −31~35%;饱和后收敛速度/鲁棒性优势)**,勿用 vs A-single 夸大。
 
 ## 结论
 
-迭代(暖启动)自适应蒸馏在 CSTR Phase 0 三典型点上**概念成立**:在学生有改进空间时(P1/P2),逐轮重估权重的迭代显著优于单趟、且在匹配预算下显著优于纯多训;在地板处(P3)自动失效且不退化。**建议进入 Phase 1**(锚点 n=10 显著性 + 5×5 网格稳健性)。
+迭代(暖启动)自适应蒸馏在 CSTR Phase 0 三典型点上**概念成立**:在学生有改进空间时(P1/P2),逐轮重估权重的迭代显著优于单趟、且在匹配预算下比纯多训**更可靠地收敛到离散化地板**;在地板处(P3)自动失效且不退化。K=15 饱和探索修正了口径:**迭代的优势是收敛速度 + 跨 seed 鲁棒性,而非更低的地板**(A_iter 收敛后地板相同,但常停滞)。**建议进入 Phase 1**(锚点 n=10 显著性 + 5×5 网格 + 独立 holdout 防过拟合)。
