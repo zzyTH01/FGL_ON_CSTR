@@ -17,6 +17,7 @@
 """
 import os
 from collections import deque
+import copy
 
 import numpy as np
 import torch
@@ -652,6 +653,79 @@ def _compute_arm_weights(variant, student, teacher, student_train_full,
     te = {int(j - (H - 1)): e for j, e in te_raw.items()}
     weights, _, _ = compute_weights("E", se, te, student_train_indices)
     return weights
+
+
+def _iterate_student(student_0, teacher, variant, max_rounds,
+                     student_train, teacher_train, student_val, student_test,
+                     student_train_full, teacher_train_full, student_train_indices,
+                     L, H, alpha, temperature, round_epochs, patience,
+                     eps, N_stall, lr):
+    """单臂暖启动迭代蒸馏。
+
+    student_0: 已训练的 round-0 student(共享,本函数不修改入参对象)。
+    variant: 'A'(每轮恒均匀)或 'E'(每轮按当前 student 重估 gap 权重)。
+    max_rounds: 该臂最大轮数(E-single=1;iter 臂=K)。
+    返回 dict: {rounds_used, total_epochs, mse_curve_val, mse_curve_test, student}。
+    student 为 keep-best-by-val 的模型实例。
+    """
+    ce = torch.nn.CrossEntropyLoss()
+    student = copy.deepcopy(student_0)
+    student.eval()
+
+    mse_curve_val = [evaluate(student, student_val, L)]
+    mse_curve_test = [evaluate(student, student_test, L)]
+    best_val = mse_curve_val[0]
+    best_state = {k: v.clone() for k, v in student.state_dict().items()}
+    total_epochs = 0
+    rounds_used = 0
+
+    for r in range(1, max_rounds + 1):
+        weights = _compute_arm_weights(variant, student, teacher,
+                                       student_train_full, teacher_train_full,
+                                       student_train_indices, L, H)
+        opt = optim.Adam(student.parameters(), lr=lr)
+        stop = EarlyStopper(patience=patience)
+        for _ in range(round_epochs):
+            student.train()
+            for (idx_s, x_s, y_s), (_, x_t, _) in zip(student_train, teacher_train):
+                x_s = x_s.float().to(device).view(-1, 1, L)
+                targets = y_s.long().to(device)
+                outputs = student(x_s)
+                x_t = x_t.float().to(device).view(-1, 1, L)
+                with torch.no_grad():
+                    logits = teacher(x_t)
+                bw = torch.tensor([weights.get(i.item(), 1.0) for i in idx_s],
+                                  dtype=torch.float32, device=device)
+                loss = alpha * ce(outputs, targets) + KL_weighted(outputs, logits, temperature, alpha, bw)
+                opt.zero_grad(); loss.backward(); opt.step()
+            student.eval()
+            with torch.no_grad():
+                vl = sum(ce(student(x.float().to(device).view(-1, 1, L)),
+                            y.long().to(device)).item()
+                         for _, x, y in student_val) / len(student_val)
+            total_epochs += 1
+            if stop.step(vl, student):
+                break
+        stop.restore(student)
+        student.eval()
+
+        mv = evaluate(student, student_val, L)
+        mse_curve_val.append(mv)
+        mse_curve_test.append(evaluate(student, student_test, L))
+        if mv < best_val:
+            best_val = mv
+            best_state = {k: v.clone() for k, v in student.state_dict().items()}
+        rounds_used = r
+
+        stop_flag, _ = _should_stop(mse_curve_val, eps, N_stall, max_rounds)
+        if stop_flag:
+            break
+
+    student.load_state_dict(best_state)
+    student.eval()
+    return {"rounds_used": rounds_used, "total_epochs": total_epochs,
+            "mse_curve_val": mse_curve_val, "mse_curve_test": mse_curve_test,
+            "student": student}
 
 
 # ================================================================

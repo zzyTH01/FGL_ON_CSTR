@@ -82,3 +82,101 @@ def test_weights_E_bounded(tiny_loaders):
                              tiny_loaders["indices"], L, H)
     assert set(w) == set(tiny_loaders["indices"])
     assert all(0.0 <= v <= 4.0 for v in w.values())  # compute_weights E 分支恒落于 [0, W_MAX=4]
+
+
+# ==================== Task 3: _iterate_student ====================
+from fgl_common import compute_shared_bin_edges, create_time_series_dataset
+from fgl_common.training import _iterate_student, evaluate
+
+
+@pytest.fixture(scope="module")
+def tiny_setup(tiny_loaders):
+    """训练一个共享 teacher + round-0 student_0 供 _iterate_student 测试。"""
+    L, H, nb = tiny_loaders["L"], tiny_loaders["H"], tiny_loaders["num_bins"]
+    data = _tiny_series()
+    bin_edges, _, _ = compute_shared_bin_edges(data, L, nb)
+    student_train, student_val, student_test, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=H, num_bins=nb,
+        val_size=0.2, test_size=0.2, offset=0, batch_size=8, bin_edges=bin_edges)
+    teacher_train, teacher_val, _, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=1, num_bins=nb,
+        val_size=0.2, test_size=0.2, offset=H - 1, batch_size=8, bin_edges=bin_edges)
+    torch.manual_seed(0)
+    teacher = RNN(L, 16, nb, 1).to(device)
+    ce = torch.nn.CrossEntropyLoss()
+    opt = torch.optim.Adam(teacher.parameters(), lr=1e-3)
+    for _ in range(3):
+        teacher.train()
+        for _, x, y in teacher_train:
+            x = x.float().to(device).view(-1, 1, L)
+            opt.zero_grad(); ce(teacher(x), y.long().to(device)).backward(); opt.step()
+    teacher.eval()
+    # round-0 student(uniform KL,from scratch)
+    torch.manual_seed(1)
+    student_0 = RNN(L, 16, nb, 1).to(device)
+    from fgl_common import KL
+    opt = torch.optim.Adam(student_0.parameters(), lr=1e-3)
+    for _ in range(3):
+        student_0.train()
+        for (_, xs, ys), (_, xt, _) in zip(student_train, teacher_train):
+            xs = xs.float().to(device).view(-1, 1, L)
+            out = student_0(xs)
+            xt = xt.float().to(device).view(-1, 1, L)
+            with torch.no_grad():
+                tlog = teacher(xt)
+            loss = 0.5 * ce(out, ys.long().to(device)) + KL(out, tlog, 4.0, 0.5)
+            opt.zero_grad(); loss.backward(); opt.step()
+    student_0.eval()
+    return dict(teacher=teacher, student_0=student_0,
+                student_train=student_train, teacher_train=teacher_train,
+                student_val=student_val, student_test=student_test,
+                sf=tiny_loaders["sf"], tf=tiny_loaders["tf"],
+                indices=tiny_loaders["indices"], L=L, H=H, nb=nb)
+
+
+def test_iterate_student_structure(tiny_setup):
+    s = tiny_setup
+    res = _iterate_student(
+        s["student_0"], s["teacher"], "A", max_rounds=2,
+        student_train=s["student_train"], teacher_train=s["teacher_train"],
+        student_val=s["student_val"], student_test=s["student_test"],
+        student_train_full=s["sf"], teacher_train_full=s["tf"],
+        student_train_indices=s["indices"],
+        L=s["L"], H=s["H"], alpha=0.5, temperature=4.0,
+        round_epochs=2, patience=5, eps=0.01, N_stall=2, lr=1e-3)
+    assert {"rounds_used", "total_epochs", "mse_curve_val", "mse_curve_test", "student"} <= set(res)
+    assert res["rounds_used"] <= 2
+    assert len(res["mse_curve_val"]) == res["rounds_used"] + 1
+    assert len(res["mse_curve_test"]) == res["rounds_used"] + 1
+    assert res["total_epochs"] >= res["rounds_used"]
+
+
+def test_iterate_student_keeps_best_by_val(tiny_setup):
+    s = tiny_setup
+    res = _iterate_student(
+        s["student_0"], s["teacher"], "E", max_rounds=3,
+        student_train=s["student_train"], teacher_train=s["teacher_train"],
+        student_val=s["student_val"], student_test=s["student_test"],
+        student_train_full=s["sf"], teacher_train_full=s["tf"],
+        student_train_indices=s["indices"],
+        L=s["L"], H=s["H"], alpha=0.5, temperature=4.0,
+        round_epochs=2, patience=5, eps=0.01, N_stall=2, lr=1e-3)
+    # 返回的 student 应对应 val 最优那一轮
+    best_val = min(res["mse_curve_val"])
+    assert abs(evaluate(res["student"], s["student_val"], s["L"]) - best_val) < 1e-4
+
+
+def test_iterate_student_maxrounds0_is_round0(tiny_setup):
+    s = tiny_setup
+    res = _iterate_student(
+        s["student_0"], s["teacher"], "A", max_rounds=0,
+        student_train=s["student_train"], teacher_train=s["teacher_train"],
+        student_val=s["student_val"], student_test=s["student_test"],
+        student_train_full=s["sf"], teacher_train_full=s["tf"],
+        student_train_indices=s["indices"],
+        L=s["L"], H=s["H"], alpha=0.5, temperature=4.0,
+        round_epochs=2, patience=5, eps=0.01, N_stall=2, lr=1e-3)
+    assert res["rounds_used"] == 0
+    assert len(res["mse_curve_val"]) == 1
+    # 与输入 student_0 的 val MSE 一致(未训练)
+    assert abs(res["mse_curve_val"][0] - evaluate(s["student_0"], s["student_val"], s["L"])) < 1e-4
