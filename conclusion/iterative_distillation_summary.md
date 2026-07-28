@@ -24,6 +24,8 @@
 | **CSTR Phase 1** | 锚点 n=10 + 5×5×2,K=6 | 锚点 p=0.94 无差异;网格 52% 胜/中位数 0%/p=0.005 名义 | **可行但窄**:锚点不显著,网格效应不稳健 |
 | MG Phase 0 | τ=13,3 跨阈值点 × 3 seeds,K=5 | E_iter vs A_iter:M1 −24%、M2 +13%、M3 ≈ | **负结果**:不跨域泛化 |
 | 可视化 | CSTR L20H15 / MG L4H10,逐轮 | 红点(预测)逐轮贴向灰线(真实) | 收敛形态直观可视 |
+| **MG E-soft w_floor 扫描** | τ=13,3 点 × 3 seeds,wf∈{0.05,0.1,0.15,0.2} | 任何软地板修好 M1 崩溃(5.06→<0.93),但稀释 M2 浓度 | **无甜点**:浓度/稳定直接冲突 |
+| **CSTR E-soft** | 3 点 × 3 seeds,wf=0.2,K=6 | 锚点/地板中性,L8H30 −13.8% | 软地板稀释 CSTR 中难度优势 |
 
 ## 3. CSTR 线 —— 从乐观到收紧
 
@@ -47,7 +49,7 @@ MG τ=13(倍周期分岔,FGL 本就强 +59~78%)上 E_iter 的净效应为负/零
 - **难任务(CSTR,baseline ~120)**:弱点持续存在 → E 每轮都找得到 gap 瞄准 → 浓缩奏效(但饱和后仍同地板)。
 - **易任务(MG,baseline 低)**:学生很快收敛 → gap 迅速消失 → E 的蒸馏池**早早干涸** → 后期 E≈CE-only,丢掉 A 持续供给的老师信号 → E吃亏。
 - 即用户点出的"**A 客观上给学生更多信息**"在收敛后期成立:A 全样本恒均匀,E 跳过已解决样本。
-- 推论:放宽零地板(gap=0→权重 0.2,温和变体 C)可能在易任务上恢复 E 的有效性。**未验证。**
+- 推论:放宽零地板(gap=0→软地板)能否救回 E?→ **已验证(§5.5)**:软地板修好易任务的干涸崩溃,但代价是稀释有空间处的浓度,**无静态甜点**。
 
 ## 5.5 E-soft / w_floor 扫描:浓度 vs 稳定的直接权衡(无免费午餐)
 
@@ -90,15 +92,18 @@ CSTR/MG 都属周期性较强信号 → **val≈test**(相邻窗口分布近乎�
 3. **唯一窄价值**:中等难度 cell 上 E_iter 比 A_iter 更不容易卡死(可靠性)。
 4. **不跨域**:MG τ=13 上净效应为负/零。
 5. **机制**:E 的零地板让蒸馏池随收敛收缩,易任务/饱和后吃亏。
+6. **w_floor 无免费午餐(§5.5)**:软地板修好易任务的干涸崩溃(MG M1),但稀释有空间处的浓度(MG M2 / CSTR 中难度 cell);**两者是零地板机制的两面,静态地板无法兼得** → 暗示真正解法是**动态地板**(早期硬保浓度、后期软防干涸)。
 
-**不应作为 CSTR/MG 的胜利结论宣传。** 它是一个有清晰机制解释、但收益窄于预期的探索方向。
+**不应作为 CSTR/MG 的胜利结论宣传。** 它是一个有清晰机制解释、收益窄于预期、且改进方向已被收窄到一个具体可验证 idea(动态地板)的探索方向。
 
 ## 8. 开放问题 / 下一步
 
-1. **独立 holdout 复核**:剔除 val≈test 过拟合后,网格 p=0.005 是否仍成立?
-2. **温和地板版**(gap=0→0.2,W_MAX=2):能否把可靠性优势扩展到锚点/地板 cell、并恢复 MG?
+1. **动态地板(机制驱动的首选)**:地板硬度随训练进度从 0→0.2 渐变——早期学生弱、有空间,用硬地板保浓度;后期接近收敛、易干涸,切软地板防崩溃。直接对冲 §5.5 的浓度/稳定冲突,是最值得测的下一步。
+2. **独立 holdout 复核**:剔除 val≈test 过拟合后,网格 p=0.005 是否仍成立?(静态地板结论稳健性的最后一锤)
 3. **Lorenz-63**:强混沌、baseline 不触地板,是 E 机制可能表现不同的第三域(未测)。
 4. **诊断 gap 分布**:对比 CSTR/MG 的 teacher−student MSE gap 稳定性,直接验证"MG 的 gap 逐轮漂移更剧烈"假说。
+
+> 注:"温和地板版"(gap=0→0.2 线性)已由 E-soft 覆盖并证伪为静态甜点(§5.5);故从开放问题移除,其精神被"动态地板"继承。
 
 ## 9. 索引:分报告与代码
 
@@ -106,8 +111,8 @@ CSTR/MG 都属周期性较强信号 → **val≈test**(相邻窗口分布近乎�
 |------|------|
 | CSTR Phase 0 + 饱和分析 | `conclusion/iterative_pilot_phase0.md` |
 | CSTR Phase 1 全验证 | `conclusion/iterative_phase1_cstr.md` |
-| MG Phase 0(负结果) | `conclusion/iterative_pilot_phase0_mg.md` |
-| 方法实现 | `fgl_common/training.py::run_iterative_distillation`(+ `_iterate_student` / `_compute_arm_weights` / `_should_stop`) |
+| MG Phase 0(负结果)+ E-soft 验证 | `conclusion/iterative_pilot_phase0_mg.md` |
+| 方法实现 | `fgl_common/training.py::run_iterative_distillation`(+ `_iterate_student` / `_compute_arm_weights` / `_should_stop`);`fgl_common/distillation.py::compute_weights`(变体 A/B/C/D/E/**E-soft**,`w_floor` 可调) |
 | CSTR sweep / 分析 / 可视化 | `cstr/sweep_iterative.py`、`cstr/analyze_iterative.py`、`cstr/plot_iterative_rounds.py` |
 | MG sweep / 可视化 | `mackey_glass/sweep_iterative.py`、`mackey_glass/plot_iterative_rounds.py` |
-| 测试 | `tests/fgl_common/test_iterative_distillation.py`(15 用例) |
+| 测试 | `tests/fgl_common/test_iterative_distillation.py`(17 用例,含 E-soft + w_floor) |
