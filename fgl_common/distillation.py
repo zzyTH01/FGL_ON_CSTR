@@ -98,6 +98,12 @@ def compute_weights(variant, student_errors, teacher_errors, student_train_indic
             se = student_errors.get(idx, 0.0)
             te = teacher_errors.get(idx, 0.0)
             raw[i] = max(0.0, se - te)
+    elif variant == 'E-soft':
+        # signed gap(可为负:学生优于老师)→ 喂给 sigmoid 做软地板
+        for i, idx in enumerate(student_train_indices):
+            se = student_errors.get(idx, 0.0)
+            te = teacher_errors.get(idx, 0.0)
+            raw[i] = se - te
     else:
         raise ValueError(f"Unknown variant: {variant}")
 
@@ -109,6 +115,22 @@ def compute_weights(variant, student_errors, teacher_errors, student_train_indic
         W_MAX = 4.0
         p95 = np.percentile(raw, 95)
         normalized = np.clip(raw, 0.0, p95) / p95 * W_MAX if p95 > 1e-8 else np.ones(n)
+    elif variant == 'E-soft':
+        # Sigmoid 软地板激活:w = w_floor + (W_MAX - w_floor)·σ((gap - c)/s)。
+        # 大正 gap → 饱和到 W_MAX(满档蒸馏,同 E);负 gap → 软地板 w_floor
+        # (非零,老师信号不断流 → 不干涸);中间 S 形过渡。中心 c=中位数,
+        # 尺度 s=(p75-p25)/2。
+        w_floor, W_MAX = 0.2, 4.0
+        if raw.std() < 1e-8:
+            normalized = np.full(n, (w_floor + W_MAX) / 2.0)
+        else:
+            c = float(np.median(raw))
+            p25, p75 = np.percentile(raw, 25), np.percentile(raw, 75)
+            s = (p75 - p25) / 2.0
+            if s < 1e-8:
+                s = float(raw.std())
+            sig = 1.0 / (1.0 + np.exp(-(raw - c) / s))
+            normalized = w_floor + (W_MAX - w_floor) * sig
     else:  # B / C / D — gentle [0.2, 2.0] mapping
         p5, p95 = np.percentile(raw, 5), np.percentile(raw, 95)
         if p95 - p5 < 1e-8:

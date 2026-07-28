@@ -651,7 +651,7 @@ def _compute_arm_weights(variant, student, teacher, student_train_full,
     se = compute_per_sample_mse(student, student_train_full, L)
     te_raw = compute_per_sample_mse(teacher, teacher_train_full, L)
     te = {int(j - (H - 1)): e for j, e in te_raw.items()}
-    weights, _, _ = compute_weights("E", se, te, student_train_indices)
+    weights, _, _ = compute_weights(variant, se, te, student_train_indices)
     return weights
 
 
@@ -834,9 +834,9 @@ def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_b
 
     arms = {
         "A_single": _arm("A", 0),
-        "E_single": _arm("E", 1),
+        "E_single": _arm(variant, 1),
         "A_iter":   _arm("A", K),
-        "E_iter":   _arm("E", K, snapshot_fn=e_iter_snapshot_fn),
+        "E_iter":   _arm(variant, K, snapshot_fn=e_iter_snapshot_fn),
     }
 
     results = {}

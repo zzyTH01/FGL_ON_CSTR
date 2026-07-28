@@ -223,3 +223,22 @@ def test_E_single_uses_one_round():
         _tiny_data(), L=20, H=15, num_bins=50, epochs=3, round_epochs=2,
         batch_size=8, K=2, seed=0, verbose=False)
     assert res["E_single"]["rounds_used"] == 1
+
+
+# ==================== E-soft variant (sigmoid + soft floor) ====================
+from fgl_common import compute_weights
+
+
+def test_compute_weights_E_soft_bounded_and_ordered():
+    """E-soft: sigmoid 软地板,权重恒落于 [w_floor=0.2, W_MAX=4.0],
+    大正 gap 权重高、负 gap(学生优于老师)权重低(近地板)。"""
+    indices = [0, 1, 2, 3]
+    se = {0: 0.1, 1: 0.5, 2: 0.9, 3: 0.1}      # student per-sample MSE
+    te = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.9}      # teacher per-sample MSE
+    # signed gaps = se - te: {0:0, 1:+0.4, 2:+0.8, 3:-0.8}
+    w, raw, norm = compute_weights('E-soft', se, te, indices)
+    assert set(w) == set(indices)
+    assert all(0.2 - 1e-6 <= v <= 4.0 + 1e-6 for v in w.values())  # [w_floor, W_MAX]
+    assert w[2] > w[3]    # 大正 gap (0.8) > 负 gap (-0.8)
+    assert w[3] < 1.0     # 负 gap 样本拿到接近地板的低权重
+    assert w[2] > w[0]    # 大正 gap > 零 gap
