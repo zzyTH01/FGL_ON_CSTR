@@ -36,7 +36,7 @@ python cstr/run.py -e baseline,lh_sweep  # run specific ones
 python cstr/run.py --list                # list all + switch state + notes
 ```
 
-- **`cstr/run.py`** — baseline / lstm / regression / seq2seq / adaptive / adaptive_weight / **lh_sweep** (enabled: baseline, lh_sweep). Failed CSTR optimizations default off.
+- **`cstr/run.py`** — baseline / lstm / regression / seq2seq / adaptive / adaptive_weight / **lh_sweep** (enabled: baseline, lh_sweep). Non-mainline CSTR optimizations default off. (`adaptive_weight` variant E — amplified teacher−student MSE-gap weighting — is verified effective on CSTR; see `conclusion/`.)
 - **`mackey_glass/run.py`** — base / drift / **lh_sweep** / tau_sweep / l_threshold / h_threshold / geometry (enabled: base, lh_sweep). Threshold/geometry tests verify the L+H-1≥τ formula.
 - **`lorenz/run.py`** — **generate** (ρ sweep) / **lh_sweep** (ρ=60 strong chaos).
 

@@ -1,7 +1,7 @@
 [project]
 name = "futureguidedlearning-main"
 version = "0.1.0"
-description = "Future Guided Learning for Time Series Prediction (Epilepsy Seizure Detection)"
+description = "Future-Guided Learning for time-series forecasting (Mackey-Glass / CSTR / Lorenz)"
 requires-python = ">=3.11, <3.12"
 dependencies = [
     "scipy==1.11.3",
@@ -16,5 +16,19 @@ dependencies = [
     "sympy",
     "cantera>=3.2.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools]
+# 显式声明唯一可导入包,避免 setuptools 自动发现时因 flat-layout(cstr/lorenz/
+# mackey_glass 等多顶层目录)报错——jitcdde 在仓库根 CWD 编译 C 扩展时会触发该检查。
+packages = ["fgl_common"]
 
 

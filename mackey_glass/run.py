@@ -39,7 +39,7 @@ import matplotlib  # noqa: E402
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from fgl_common import RNN, run_fgl_experiment, run_lh_sweep  # noqa: E402
+from fgl_common import RNN, run_fgl_experiment, run_lh_sweep, run_iterative_distillation  # noqa: E402
 from utils.utils import MackeyGlass  # noqa: E402
 
 _RESULTS_DIR = os.path.join(_MG_DIR, "results")
@@ -342,6 +342,42 @@ def run_geometry(args):
         print(f"  dist={dist:+3.0f}: Δ={arr.mean():+7.1f}% ± {arr.std():.1f} (n={len(arr)})")
 
 
+def run_iterative_distill_exp(args):
+    """迭代自适应蒸馏 4 臂对比(A-single / E-single / A-iter / E-iter)在 MG τ=13 上。"""
+    data, lyap = generate_mg_data(tau=args.tau, n_points=args.n_points)
+    print(f"MG τ={args.tau}, Lyapunov={lyap:+.6f}")
+    n_seeds = args.seeds if args.seeds else 3
+    rows = []
+    for s in range(n_seeds):
+        arms = run_iterative_distillation(
+            data, L=args.L, H=args.H, alpha=args.alpha, temperature=args.temperature,
+            num_bins=args.bins, epochs=args.epochs, round_epochs=args.round_epochs,
+            batch_size=args.batch_size, K=args.K, patience=args.patience, seed=s, verbose=False)
+        for arm, r in arms.items():
+            rows.append({"seed": s, "arm": arm, "student_mse": r["student_mse"],
+                         "baseline_mse": r["baseline_mse"], "fgl_delta": r["fgl_delta"],
+                         "init_delta": r["init_delta"], "rounds_used": r["rounds_used"]})
+
+    print(f"\n{'=' * 60}\nSUMMARY: iterative_distill MG (L={args.L} H={args.H} τ={args.tau})\n{'=' * 60}")
+    agg = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        for k in ("student_mse", "fgl_delta", "init_delta"):
+            agg[r["arm"]][k].append(r[k])
+
+    def _sd(a):
+        a = np.array(a); return a.std(ddof=1) if len(a) > 1 else 0.0
+
+    for arm in ("A_single", "E_single", "A_iter", "E_iter"):
+        if arm not in agg:
+            continue
+        sm = np.array(agg[arm]["student_mse"])
+        fd = np.array(agg[arm]["fgl_delta"])
+        idt = np.array(agg[arm]["init_delta"])
+        print(f"  {arm:9s}: student_mse={sm.mean():.3f}±{_sd(sm):.3f}  "
+              f"Δbase={fd.mean():+.1f}%±{_sd(fd):.1f}  "
+              f"Δinit={idt.mean():+.1f}%±{_sd(idt):.1f}  (n={len(sm)})")
+
+
 # ==================== Experiment switches ====================
 EXPERIMENTS = {
     "base":        dict(fn=run_base,         enabled=True,  note="标准 FGL(data.pkl)"),
@@ -351,6 +387,8 @@ EXPERIMENTS = {
     "l_threshold": dict(fn=run_l_threshold,  enabled=False, note="固定 H 扫 L —— 干净因果检验"),
     "h_threshold": dict(fn=run_h_threshold,  enabled=False, note="固定 L 扫 H —— 阈值对称检验"),
     "geometry":    dict(fn=run_geometry,     enabled=False, note="(L,H) 配置几何证伪 L+H-1≥τ"),
+    "iterative_distill": dict(fn=run_iterative_distill_exp, enabled=False,
+                              note="迭代自适应蒸馏 4 臂(MG τ=13);Phase 0 先跑典型点"),
 }
 
 
@@ -377,6 +415,8 @@ def main():
     parser.add_argument("--taus", type=str, default=None, help="[tau_sweep] τ 列表")
     parser.add_argument("--L_values", type=str, default=None, help="[lh_sweep/l_threshold] L 列表")
     parser.add_argument("--H_values", type=str, default=None, help="[lh_sweep/h_threshold] H 列表")
+    parser.add_argument("--round_epochs", type=int, default=20, help="[iterative_distill] 每轮 epoch")
+    parser.add_argument("--K", type=int, default=5, help="[iterative_distill] 最大迭代轮数")
     args = parser.parse_args()
 
     if args.list:

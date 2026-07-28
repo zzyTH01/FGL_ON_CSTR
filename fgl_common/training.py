@@ -11,11 +11,13 @@
   - ``run_fgl_experiment``       —— 三阶段(teacher→baseline→student)。覆盖 baseline /
                                      lstm / regression / drift,差异收敛为 ``model_fn`` /
                                      ``regression`` / ``use_ph`` 参数。
-  - ``run_adaptive_weight``      —— 自适应蒸馏权重 A/B/C/D(独立流程)。
+  - ``run_adaptive_weight``      —— 自适应蒸馏权重 A/B/C/D(teacher−student MSE 差距,独立流程)。
   - ``run_adaptive_inference``   —— 推理时 teacher-student 融合(独立流程)。
   - ``run_seq2seq``              —— 多步序列 FGL(独立流程)。
 """
+import os
 from collections import deque
+import copy
 
 import numpy as np
 import torch
@@ -28,12 +30,30 @@ from .distillation import KL, KL_weighted, seq_KL, compute_weights
 
 
 # ==================== Device ====================
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
+def _select_device() -> torch.device:
+    """CUDA > MPS > CPU 自动检测。
+
+    可用环境变量 ``FGL_DEVICE`` 强制覆盖(cpu / mps / cuda),用于在 MPS 上
+    遇到不支持的 op 时回退 CPU 等场景;指定不可用的设备会显式报错而非静默回退。
+    """
+    env = os.environ.get("FGL_DEVICE", "").strip().lower()
+    if env:
+        if env not in ("cpu", "mps", "cuda"):
+            raise ValueError(f"FGL_DEVICE={env!r} 不合法,应为 cpu / mps / cuda 之一")
+        if env == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("FGL_DEVICE=cuda 但未检测到可用 CUDA")
+        if env == "mps" and not torch.backends.mps.is_available():
+            raise RuntimeError("FGL_DEVICE=mps 但未检测到可用 MPS")
+        return torch.device(env)
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+device = _select_device()
+print(f"[fgl] device = {device}")  # 换机器运行时一眼看到落到了哪
 
 
 # ==================== Early Stopping ====================
@@ -218,6 +238,26 @@ def compute_per_sample_errors(model, loader, L):
             y_int = y.long().to(device)
             logits = model(x)
             per_sample = celoss(logits, y_int)
+            for j, idx in enumerate(indices):
+                errors[idx.item()] = per_sample[j].item()
+    return errors
+
+
+def compute_per_sample_mse(model, loader, L):
+    """Per-sample bin-index MSE as a dict {sample_idx: mse}.
+
+    ``mse = (argmax_pred - true_bin) ** 2`` — consistent with :func:`evaluate`
+    (classification MSE on predicted vs true bin index). Feeds the teacher–student
+    MSE-gap weighting in :func:`run_adaptive_weight`; uses batch_size=1 loaders.
+    """
+    model.eval()
+    errors = {}
+    with torch.no_grad():
+        for indices, x, y in loader:
+            x = x.float().to(device).view(-1, 1, L)
+            y_int = y.long().to(device).squeeze(-1)
+            pred = model(x).argmax(dim=1).float()
+            per_sample = (pred - y_int.float()).pow(2)
             for j, idx in enumerate(indices):
                 errors[idx.item()] = per_sample[j].item()
     return errors
@@ -452,11 +492,54 @@ def run_adaptive_weight(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
     baseline = RNN(L, hidden, output, layers).to(device)
     train_simple(baseline, student_train, student_val)
 
-    # per-sample weights
+    # Always train a preliminary standard-FGL student (uniform-weight KL) as the
+    # "initial student" reference. Its per-sample MSE drives the gap weights
+    # (B/C/D), and its test MSE is the baseline the final weighted student must
+    # beat for adaptive weighting to count as helpful.
+    def train_student_standard():
+        stu = RNN(L, hidden, output, layers).to(device)
+        opt = optim.Adam(stu.parameters(), lr=lr)
+        stop = EarlyStopper(patience=patience)
+        for _ in range(epochs):
+            stu.train()
+            for (_, xs, ys), (_, xt, _) in zip(student_train, teacher_train):
+                xs = xs.float().to(device).view(-1, 1, L)
+                ys = ys.long().to(device)
+                out = stu(xs)
+                xt = xt.float().to(device).view(-1, 1, L)
+                with torch.no_grad():
+                    tlog = teacher(xt)
+                loss = alpha * ce(out, ys) + KL(out, tlog, temperature, alpha)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+            stu.eval()
+            with torch.no_grad():
+                vl = sum(ce(stu(x.float().to(device).view(-1, 1, L)), y.long().to(device)).item()
+                         for _, x, y in student_val) / len(student_val)
+            if stop.step(vl, stu):
+                break
+        stop.restore(stu)
+        stu.eval()
+        return stu
+
+    prelim_student = train_student_standard()
+    student_mse_init = evaluate(prelim_student, student_test, L)
+
+    # per-sample weights — criterion = max(0, se_student − se_teacher) MSE gap,
+    # taken on the preliminary student vs the teacher.
     student_train_indices = [indices[0].item() for indices, _, _ in student_train_full]
-    baseline_errors = compute_per_sample_errors(baseline, student_train_full, L)
-    teacher_errors = compute_per_sample_errors(teacher, teacher_train_full, L)
-    weights_dict, raw_w, norm_w = compute_weights(variant, baseline_errors,
+    if variant == 'A':
+        student_errors, teacher_errors = {}, {}
+    else:
+        student_errors = compute_per_sample_mse(prelim_student, student_train_full, L)
+        te_raw = compute_per_sample_mse(teacher, teacher_train_full, L)
+        # teacher loader uses offset=H-1 → its tuple-idx j predicts the same raw
+        # target as student idx j-(H-1). Re-key into student-index space so the
+        # gap is on aligned targets (fixes the offset misalignment inherited from
+        # the no-op is_teacher_loader in the original script).
+        teacher_errors = {int(j - (H - 1)): e for j, e in te_raw.items()}
+    weights_dict, raw_w, norm_w = compute_weights(variant, student_errors,
                                                   teacher_errors, student_train_indices)
     if verbose:
         print(f"    Raw weights: mean={raw_w.mean():.3f} std={raw_w.std():.3f} "
@@ -504,11 +587,272 @@ def run_adaptive_weight(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
     b_mse = evaluate(baseline, student_test, L)
     s_mse = evaluate(student, student_test, L)
     improvement = (b_mse - s_mse) / b_mse * 100 if b_mse > 0 else 0
+    # vs the preliminary (initial) student — positive = adaptive weighting
+    # descended below the initial standard-FGL student.
+    init_delta = (student_mse_init - s_mse) / student_mse_init * 100 if student_mse_init > 0 else 0
     if verbose:
-        print(f"  [{variant}] Baseline={b_mse:.1f} Student={s_mse:.1f} Δ={improvement:+.1f}%")
+        print(f"  [{variant}] Baseline={b_mse:.1f}  initStudent={student_mse_init:.1f}  "
+              f"Student={s_mse:.1f}  Δbase={improvement:+.1f}%  Δinit={init_delta:+.1f}%")
     return {"variant": variant, "L": L, "H": H, "seed": seed,
-            "teacher_mse": t_mse, "baseline_mse": b_mse, "student_mse": s_mse,
-            "abs_improvement": b_mse - s_mse, "fgl_delta": improvement}
+            "teacher_mse": t_mse, "baseline_mse": b_mse,
+            "student_mse_init": student_mse_init, "student_mse": s_mse,
+            "abs_improvement": b_mse - s_mse, "fgl_delta": improvement,
+            "init_delta": init_delta}
+
+
+# ================================================================
+#  Iterative adaptive distillation — helpers
+# ================================================================
+def _should_stop(mse_history, eps, N_stall, max_rounds):
+    """迭代蒸馏停止规则(纯函数)。
+
+    Args:
+        mse_history: 逐轮 val MSE 列表;index 0 = round-0(初始 student),
+            index t = 第 t 轮后。len == 已完成轮数 + 1。
+        eps: 相对改进低于此值视为"停滞"。
+        N_stall: 连续停滞达此次数则停。
+        max_rounds: 轮数上限(K);t >= max_rounds 即停。
+    Returns:
+        (stop, reason),reason ∈ {"cap","degradation","stall","continue"}。
+    """
+    t = len(mse_history) - 1
+    if t >= max_rounds:
+        return True, "cap"
+    if t == 0:
+        return False, "continue"
+    cur, prev = mse_history[t], mse_history[t - 1]
+    if cur > prev:
+        return True, "degradation"
+    stall = 0
+    for s in range(t, 0, -1):
+        p, c = mse_history[s - 1], mse_history[s]
+        if p <= 0 or c > p:
+            break
+        if (p - c) / p < eps:
+            stall += 1
+        else:
+            break
+    if stall >= N_stall:
+        return True, "stall"
+    return False, "continue"
+
+
+def _compute_arm_weights(variant, student, teacher, student_train_full,
+                         teacher_train_full, student_train_indices, L, H):
+    """单臂逐样本蒸馏权重(对齐目标)。
+
+    variant='A' -> 恒为 1.0(对照臂:从不更新权重)。
+    variant='E' -> max(0, se_student − se_teacher) 差距,零地板放大到 [0, W_MAX=4]
+                   (由 compute_weights 处理)。
+    teacher loader 因 offset=H−1,其原始 idx j 对齐到 student idx j−(H−1),此处重映射。
+    """
+    if variant == "A":
+        return {idx: 1.0 for idx in student_train_indices}
+    se = compute_per_sample_mse(student, student_train_full, L)
+    te_raw = compute_per_sample_mse(teacher, teacher_train_full, L)
+    te = {int(j - (H - 1)): e for j, e in te_raw.items()}
+    weights, _, _ = compute_weights("E", se, te, student_train_indices)
+    return weights
+
+
+def _iterate_student(student_0, teacher, variant, max_rounds,
+                     student_train, teacher_train, student_val, student_test,
+                     student_train_full, teacher_train_full, student_train_indices,
+                     L, H, alpha, temperature, round_epochs, patience,
+                     eps, N_stall, lr, snapshot_fn=None):
+    """单臂暖启动迭代蒸馏。
+
+    student_0: 已训练的 round-0 student(共享,本函数不修改入参对象)。
+    variant: 'A'(每轮恒均匀)或 'E'(每轮按当前 student 重估 gap 权重)。
+    max_rounds: 该臂最大轮数(E-single=1;iter 臂=K)。
+    snapshot_fn: 可选回调 `fn(student, round_idx, mse_val, mse_test)`,在每轮评估后
+        (含 round-0)调用一次,供可视化捕获逐轮预测。默认 None(无行为变化)。
+    返回 dict: {rounds_used, total_epochs, mse_curve_val, mse_curve_test, student}。
+    student 为 keep-best-by-val 的模型实例。
+    """
+    ce = torch.nn.CrossEntropyLoss()
+    student = copy.deepcopy(student_0)
+    student.eval()
+
+    mse_curve_val = [evaluate(student, student_val, L)]
+    mse_curve_test = [evaluate(student, student_test, L)]
+    if snapshot_fn:
+        snapshot_fn(student, 0, mse_curve_val[0], mse_curve_test[0])
+    best_val = mse_curve_val[0]
+    best_state = {k: v.clone() for k, v in student.state_dict().items()}
+    total_epochs = 0
+    rounds_used = 0
+
+    for r in range(1, max_rounds + 1):
+        weights = _compute_arm_weights(variant, student, teacher,
+                                       student_train_full, teacher_train_full,
+                                       student_train_indices, L, H)
+        opt = optim.Adam(student.parameters(), lr=lr)
+        stop = EarlyStopper(patience=patience)
+        for _ in range(round_epochs):
+            student.train()
+            for (idx_s, x_s, y_s), (_, x_t, _) in zip(student_train, teacher_train):
+                x_s = x_s.float().to(device).view(-1, 1, L)
+                targets = y_s.long().to(device)
+                outputs = student(x_s)
+                x_t = x_t.float().to(device).view(-1, 1, L)
+                with torch.no_grad():
+                    logits = teacher(x_t)
+                bw = torch.tensor([weights.get(i.item(), 1.0) for i in idx_s],
+                                  dtype=torch.float32, device=device)
+                loss = alpha * ce(outputs, targets) + KL_weighted(outputs, logits, temperature, alpha, bw)
+                opt.zero_grad(); loss.backward(); opt.step()
+            student.eval()
+            with torch.no_grad():
+                vl = sum(ce(student(x.float().to(device).view(-1, 1, L)),
+                            y.long().to(device)).item()
+                         for _, x, y in student_val) / len(student_val)
+            total_epochs += 1
+            if stop.step(vl, student):
+                break
+        stop.restore(student)
+        student.eval()
+
+        mv = evaluate(student, student_val, L)
+        mse_curve_val.append(mv)
+        mse_curve_test.append(evaluate(student, student_test, L))
+        if snapshot_fn:
+            snapshot_fn(student, r, mv, mse_curve_test[-1])
+        if mv < best_val:
+            best_val = mv
+            best_state = {k: v.clone() for k, v in student.state_dict().items()}
+        rounds_used = r
+
+        stop_flag, _ = _should_stop(mse_curve_val, eps, N_stall, max_rounds)
+        if stop_flag:
+            break
+
+    student.load_state_dict(best_state)
+    student.eval()
+    return {"rounds_used": rounds_used, "total_epochs": total_epochs,
+            "mse_curve_val": mse_curve_val, "mse_curve_test": mse_curve_test,
+            "student": student}
+
+
+def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
+                               epochs=30, round_epochs=15, batch_size=64, patience=5,
+                               K=5, eps=0.01, N_stall=2, seed=42, variant="E",
+                               val_size=0.2, test_size=0.2, lr=1e-4, verbose=True,
+                               e_iter_snapshot_fn=None):
+    """迭代(暖启动)自适应蒸馏,2×2 四臂因子设计(共享 round-0)。
+
+    训一次 teacher / baseline / student_0(round-0,uniform KL),然后分支:
+      A_single = student_0 本身(不迭代)。
+      E_single = 暖启 1 轮,E 权重(来自 student_0)。
+      A_iter   = 暖启 ≤K 轮,权重恒均匀(归因对照)。
+      E_iter   = 暖启 ≤K 轮,每轮重估 E 权重(新方法)。
+    停止规则在 val MSE,返回每臂 keep-best-by-val 的 student,报告其 test MSE。
+    """
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    hidden, output, layers = 128, num_bins, 2
+    ce = torch.nn.CrossEntropyLoss()
+
+    bin_edges, _, _ = compute_shared_bin_edges(data, L, num_bins)
+    teacher_train, teacher_val, teacher_test, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=1, num_bins=num_bins,
+        val_size=val_size, test_size=test_size, offset=H - 1, batch_size=batch_size, bin_edges=bin_edges)
+    student_train, student_val, student_test, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=H, num_bins=num_bins,
+        val_size=val_size, test_size=test_size, offset=0, batch_size=batch_size, bin_edges=bin_edges)
+    student_train_full, _, _, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=H, num_bins=num_bins,
+        val_size=val_size, test_size=test_size, offset=0, batch_size=1, bin_edges=bin_edges)
+    teacher_train_full, _, _, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=1, num_bins=num_bins,
+        val_size=val_size, test_size=test_size, offset=H - 1, batch_size=1, bin_edges=bin_edges)
+    student_train_indices = [idx[0].item() for idx, _, _ in student_train_full]
+
+    if verbose:
+        print(f"  [iter] L={L} H={H} α={alpha} T={temperature} K={K} seed={seed}")
+
+    def _train_simple(model, loader, vloader):
+        opt = optim.Adam(model.parameters(), lr=lr)
+        stop = EarlyStopper(patience=patience)
+        for _ in range(epochs):
+            model.train()
+            for _, x, y in loader:
+                x = x.float().to(device).view(-1, 1, L)
+                opt.zero_grad(); ce(model(x), y.long().to(device)).backward(); opt.step()
+            model.eval()
+            with torch.no_grad():
+                vl = sum(ce(model(x.float().to(device).view(-1, 1, L)), y.long().to(device)).item()
+                         for _, x, y in vloader) / len(vloader)
+            if stop.step(vl, model):
+                break
+        stop.restore(model); model.eval()
+        return model
+
+    teacher = _train_simple(RNN(L, hidden, output, layers).to(device), teacher_train, teacher_val)
+    baseline = _train_simple(RNN(L, hidden, output, layers).to(device), student_train, student_val)
+
+    # round-0 student: from scratch, uniform KL(标准 FGL)
+    student_0 = RNN(L, hidden, output, layers).to(device)
+    opt = optim.Adam(student_0.parameters(), lr=lr)
+    stop = EarlyStopper(patience=patience)
+    for _ in range(epochs):
+        student_0.train()
+        for (_, xs, ys), (_, xt, _) in zip(student_train, teacher_train):
+            xs = xs.float().to(device).view(-1, 1, L)
+            out = student_0(xs)
+            xt = xt.float().to(device).view(-1, 1, L)
+            with torch.no_grad():
+                tlog = teacher(xt)
+            loss = alpha * ce(out, ys.long().to(device)) + KL(out, tlog, temperature, alpha)
+            opt.zero_grad(); loss.backward(); opt.step()
+        student_0.eval()
+        with torch.no_grad():
+            vl = sum(ce(student_0(x.float().to(device).view(-1, 1, L)), y.long().to(device)).item()
+                     for _, x, y in student_val) / len(student_val)
+        if stop.step(vl, student_0):
+            break
+    stop.restore(student_0); student_0.eval()
+
+    teacher_mse = evaluate(teacher, teacher_test, L)
+    baseline_mse = evaluate(baseline, student_test, L)
+
+    common = dict(student_train=student_train, teacher_train=teacher_train,
+                  student_val=student_val, student_test=student_test,
+                  student_train_full=student_train_full, teacher_train_full=teacher_train_full,
+                  student_train_indices=student_train_indices, L=L, H=H, alpha=alpha,
+                  temperature=temperature, round_epochs=round_epochs, patience=patience,
+                  eps=eps, N_stall=N_stall, lr=lr)
+
+    def _arm(variant, max_rounds, snapshot_fn=None):
+        if max_rounds == 0:
+            return {"rounds_used": 0, "total_epochs": 0,
+                    "mse_curve_val": [evaluate(student_0, student_val, L)],
+                    "mse_curve_test": [evaluate(student_0, student_test, L)],
+                    "student": student_0}
+        return _iterate_student(student_0, teacher, variant, max_rounds,
+                                snapshot_fn=snapshot_fn, **common)
+
+    arms = {
+        "A_single": _arm("A", 0),
+        "E_single": _arm("E", 1),
+        "A_iter":   _arm("A", K),
+        "E_iter":   _arm("E", K, snapshot_fn=e_iter_snapshot_fn),
+    }
+
+    results = {}
+    for name, a in arms.items():
+        s_mse = evaluate(a["student"], student_test, L)
+        init_mse = arms["A_single"]["mse_curve_test"][0]  # round-0 test MSE
+        fgl_delta = (baseline_mse - s_mse) / baseline_mse * 100 if baseline_mse > 0 else 0
+        init_delta = (init_mse - s_mse) / init_mse * 100 if init_mse > 0 else 0
+        results[name] = {"teacher_mse": teacher_mse, "baseline_mse": baseline_mse,
+                         "student_mse": s_mse, "fgl_delta": fgl_delta, "init_delta": init_delta,
+                         "rounds_used": a["rounds_used"], "total_epochs": a["total_epochs"],
+                         "mse_curve_val": a["mse_curve_val"], "mse_curve_test": a["mse_curve_test"]}
+        if verbose:
+            print(f"    {name:9s}: student_mse={s_mse:.1f}  Δbase={fgl_delta:+.1f}%  "
+                  f"Δinit={init_delta:+.1f}%  rounds={a['rounds_used']}  ep={a['total_epochs']}")
+    return results
 
 
 # ================================================================

@@ -47,6 +47,14 @@ Python 3.11 + `uv` (a `.venv/` lives at the repo root).
 uv sync          # or: pip install -r requirements.txt
 ```
 
+**Running on another machine.** Device selection (`CUDA → MPS → CPU`) is automatic. `torch` is declared without a CUDA suffix (`==2.1.1`, not `+cu121`), so the same `uv sync` / `pip install -r requirements.txt` works across platforms — Mac (MPS or CPU), Linux NVIDIA GPUs (CUDA is bundled in the default Linux wheel, no extra index needed), and CPU-only machines. To force a device, e.g. drop to CPU when an op isn't supported on MPS:
+
+```bash
+FGL_DEVICE=cpu uv run python cstr/run.py -e baseline   # bash/zsh; fish: `set -x FGL_DEVICE cpu`; Windows cmd: `set FGL_DEVICE=cpu &&`
+```
+
+The selected device is printed at startup as `[fgl] device = ...`.
+
 ## 2. Domains & data
 
 | Domain | Directory | System | Data |

@@ -3,7 +3,7 @@
 - ``KL``             —— 标准 KL(batchmean)。迁自 ``mackey_glass/utils/utils.py``。
 - ``KL_weighted``    —— 逐样本加权 KL。收自 ``cstr/exp/adaptive_weight_exp.py``。
 - ``seq_KL``         —— 序列步级 KL(前 K 步)。收自 ``cstr/exp/fgl_cstr_seq2seq.py``。
-- ``compute_weights``—— 自适应蒸馏权重 A/B/C/D。收自 ``cstr/exp/adaptive_weight_exp.py``。
+- ``compute_weights``—— 自适应蒸馏权重 A/B/C/D(判定标准 = teacher−student 逐样本 MSE 差距)。
 """
 import numpy as np
 import torch.nn.functional as F
@@ -61,17 +61,29 @@ def seq_KL(student_logits, teacher_logits, temperature, alpha, num_steps):
     return (1.0 - alpha) * kd
 
 
-def compute_weights(variant, baseline_errors, teacher_errors, student_train_indices):
+def compute_weights(variant, student_errors, teacher_errors, student_train_indices):
     """Compute per-sample weights for the KL term.
 
+    The weighting criterion is the **teacher–student MSE gap**: samples where the
+    student still lags the teacher get higher distillation weight.
+
     Args:
-        variant: 'A' (uniform), 'B' (∝ baseline error), 'C' (∝ max(0, base−teacher)).
-        baseline_errors / teacher_errors: dict {idx: error}.
+        variant: 'A' (uniform control), 'B' (∝ student MSE),
+            'C'/'D' (∝ max(0, se_student − se_teacher), normalized to [0.2, 2.0]),
+            'E' (same gap, but **amplified + zero-floored**: samples the student
+            already nails get 0 distillation weight, the hardest get up to W_MAX —
+            concentrates the entire distillation budget on the student's weak points).
+        student_errors / teacher_errors: dict {student_idx: per-sample MSE}, both
+            keyed in the *same* (student) index space and computed on the aligned
+            target. ``teacher_errors`` must already be offset-aligned by the caller
+            (teacher loader uses offset=H-1, so its raw idx j maps to student idx
+            j-(H-1) on the same target).
         student_train_indices: list of sample indices in the student loader.
     Returns:
         ``(weights_dict, raw, normalized)`` where ``weights_dict`` maps idx→weight.
 
-    Collected from ``cstr/exp/adaptive_weight_exp.py``.
+    Evolved from ``cstr/exp/adaptive_weight_exp.py`` (criterion switched from the
+    baseline-vs-teacher CE gap to the student-vs-teacher MSE gap).
     """
     n = len(student_train_indices)
     raw = np.zeros(n)
@@ -80,18 +92,24 @@ def compute_weights(variant, baseline_errors, teacher_errors, student_train_indi
         raw[:] = 1.0
     elif variant == 'B':
         for i, idx in enumerate(student_train_indices):
-            raw[i] = baseline_errors.get(idx, 0.0)
-    elif variant in ('C', 'D'):
+            raw[i] = student_errors.get(idx, 0.0)
+    elif variant in ('C', 'D', 'E'):
         for i, idx in enumerate(student_train_indices):
-            be = baseline_errors.get(idx, 0.0)
+            se = student_errors.get(idx, 0.0)
             te = teacher_errors.get(idx, 0.0)
-            raw[i] = max(0.0, be - te)
+            raw[i] = max(0.0, se - te)
     else:
         raise ValueError(f"Unknown variant: {variant}")
 
     if variant == 'A':
         normalized = raw.copy()
-    else:
+    elif variant == 'E':
+        # Amplified, zero-floored: gap=0 → weight 0 (pure CE, student already
+        # correct), gap≥p95 → W_MAX. Concentrates distillation on weak points.
+        W_MAX = 4.0
+        p95 = np.percentile(raw, 95)
+        normalized = np.clip(raw, 0.0, p95) / p95 * W_MAX if p95 > 1e-8 else np.ones(n)
+    else:  # B / C / D — gentle [0.2, 2.0] mapping
         p5, p95 = np.percentile(raw, 5), np.percentile(raw, 95)
         if p95 - p5 < 1e-8:
             normalized = np.ones(n)
