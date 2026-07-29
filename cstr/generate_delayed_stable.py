@@ -35,3 +35,24 @@ def onset_factor(t, t_onset):
     if t_onset <= 0.0:
         return 1.0
     return float(min(1.0, t / t_onset))
+
+
+def periodicity_score(series, lag_min=20, lag_max=400):
+    """Normalized autocorrelation peak over lag [lag_min, lag_max).
+
+    Matches the metric used by the other cstr/generate*.py scripts: mean-remove,
+    full autocorrelation, right half, normalize by the zero-lag value, then take
+    the max over the lag window. Returns (score, dom_lag); dom_lag*dt is the
+    dominant period in seconds.
+    """
+    s = np.asarray(series, dtype=float)
+    s = s - s.mean()
+    ac = np.correlate(s, s, mode="full")
+    ac = ac[len(ac) // 2:]            # non-negative lags
+    ac = ac / (ac[0] + 1e-10)         # normalize by zero-lag
+    hi = min(lag_max, len(ac))
+    if hi <= lag_min:
+        return 1.0, lag_min
+    window = ac[lag_min:hi]
+    idx = int(np.argmax(window))
+    return float(window[idx]), lag_min + idx
