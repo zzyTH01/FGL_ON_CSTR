@@ -67,3 +67,26 @@ def test_periodicity_detects_period_doubling():
     sig = np.sin(2 * np.pi * t / 50.0) + 0.5 * np.sin(2 * np.pi * t / 100.0)
     _, dom = periodicity_score(sig)
     assert dom == 100
+
+
+# ==================== Task 3: simulate (smoke) ====================
+import pytest
+from generate_delayed_stable import simulate_delayed_feedback_stable
+
+
+@pytest.mark.slow
+def test_simulate_short_run_is_stable_and_sane():
+    # short run: must not crash, must stay bounded
+    res = simulate_delayed_feedback_stable(
+        t_end=30.0, dt=0.1, tau_delay=20,
+        sign=-1, amplitude=0.3, t_onset=10.0,
+    )
+    assert res["h2o"].shape[0] > 0
+    assert np.all(np.isfinite(res["T"]))
+    assert np.all(np.isfinite(res["h2o"]))
+    assert res["h2o"].min() >= 0.0 and res["h2o"].max() <= 1.0      # mass fraction
+    assert res["T"].max() < 5000.0                                   # no thermal runaway
+    # bounded mdot by construction: |mdot/mdot_base - 1| <= amplitude (=0.3 here)
+    base = res["mdot_base"]
+    assert res["mdot_max"] <= base * (1 + 0.3) + 1e-12
+    assert res["mdot_min"] >= base * (1 - 0.3) - 1e-12
