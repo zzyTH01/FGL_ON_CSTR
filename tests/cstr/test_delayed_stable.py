@@ -90,3 +90,54 @@ def test_simulate_short_run_is_stable_and_sane():
     base = res["mdot_base"]
     assert res["mdot_max"] <= base * (1 + 0.3) + 1e-12
     assert res["mdot_min"] >= base * (1 - 0.3) - 1e-12
+
+
+# ==================== Task 4: sweep orchestration ====================
+import csv
+from generate_delayed_stable import build_tau_grid, run_sweep, write_sweep_csv
+
+
+def test_build_tau_grid_default():
+    assert build_tau_grid() == [5, 10, 20, 30, 40, 50, 60, 70, 80, 100, 120, 150]
+
+
+def test_build_tau_grid_fine_around_merges():
+    grid = build_tau_grid(fine_around=50)
+    assert 35 in grid and 45 in grid and 55 in grid and 65 in grid
+    assert grid == sorted(set(grid))
+
+
+def test_run_sweep_with_fake_simulate():
+    def fake(tau):
+        t = np.arange(3000)
+        return {"h2o": np.sin(2 * np.pi * t / 50.0), "T": np.full(3000, 800.0)}
+    rows = run_sweep(fake, grid=[5, 50], burn_steps=100, dt=0.1)
+    assert len(rows) == 2
+    assert all(r["status"] == "ok" for r in rows)
+    # finite-window taper (~0.983 at lag 50 for 2900 samples) — see Task 2
+    assert all(r["periodicity"] > 0.98 for r in rows)
+    assert all(r["dom_period"] == 50 for r in rows)
+    assert all(r["dom_period_s"] == 5.0 for r in rows)
+
+
+def test_run_sweep_records_failure():
+    def fake(tau):
+        if tau == 50:
+            raise RuntimeError("boom")
+        t = np.arange(3000)
+        return {"h2o": np.sin(2 * np.pi * t / 50.0), "T": np.full(3000, 800.0)}
+    rows = run_sweep(fake, grid=[5, 50], burn_steps=100, dt=0.1)
+    assert rows[0]["status"] == "ok"
+    assert rows[1]["status"].startswith("fail")
+
+
+def test_write_sweep_csv_roundtrip(tmp_path):
+    rows = [{"tau": 5, "periodicity": 0.99, "dom_period": 50, "dom_period_s": 5.0,
+             "T_min": 770.0, "T_max": 2900.0, "status": "ok"}]
+    p = tmp_path / "out.csv"
+    write_sweep_csv(rows, str(p))
+    with open(p) as f:
+        data = list(csv.DictReader(f))
+    assert len(data) == 1
+    assert float(data[0]["periodicity"]) == 0.99
+    assert data[0]["status"] == "ok"
