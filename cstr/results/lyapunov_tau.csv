@@ -1,0 +1,14 @@
+file,tau,lyap,N
+data_delayed_stable_h2o_tau100_s1_A0.9_b0.03.pkl,100,0.007927317869624178,6000
+data_delayed_stable_h2o_tau120_s1_A0.9_b0.03.pkl,120,0.006270890486570879,6000
+data_delayed_stable_h2o_tau150_s1_A0.9_b0.03.pkl,150,0.005864396574661455,6000
+data_delayed_stable_h2o_tau30_s1_A0.9_b0.03.pkl,30,0.010757389013547754,6000
+data_delayed_stable_h2o_tau35_s1_A0.9_b0.03.pkl,35,0.008655941525425396,6000
+data_delayed_stable_h2o_tau40_s1_A0.9_b0.03.pkl,40,0.0069443733232490285,6000
+data_delayed_stable_h2o_tau45_s1_A0.9_b0.03.pkl,45,0.0037928516109857163,6000
+data_delayed_stable_h2o_tau50_s1_A0.9_b0.03.pkl,50,0.0017540938564992775,6000
+data_delayed_stable_h2o_tau55_s1_A0.9_b0.03.pkl,55,0.003960987412011235,6000
+data_delayed_stable_h2o_tau60_s1_A0.9_b0.03.pkl,60,0.0034092600998126416,6000
+data_delayed_stable_h2o_tau65_s1_A0.9_b0.03.pkl,65,0.0037086501203173,6000
+data_delayed_stable_h2o_tau70_s1_A0.9_b0.03.pkl,70,0.007152742352480268,6000
+data_delayed_stable_h2o_tau80_s1_A0.9_b0.03.pkl,80,0.007575800900948589,6000
