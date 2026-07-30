@@ -436,6 +436,65 @@ def run_fgl_experiment(
             "student": student_mse, "improvement": improvement}
 
 
+def run_baseline_converged(data, lookback_window, forecasting_horizon,
+                           num_bins=50, val_size=0.2, test_size=0.2,
+                           epochs=100, batch_size=64, patience=10, lr=1e-4,
+                           hidden=128, num_layers=2, seed=42, verbose=True, label=""):
+    """只训 baseline(H 步,无教师),用更多 epoch + 更大 patience 找"真·数据地板"。
+
+    与 :func:`run_fgl_experiment` 的 baseline 段同口径(分类/bin-index MSE,offset=0,
+    forecasting_horizon=H),但不训教师/学生。用于 H4:把连续蒸馏地板与"匹配算力的
+    收敛 baseline 地板"对比,判断蒸馏能否压破数据地板。
+
+    Returns:
+        ``{"lookback", "horizon", "epochs_run", "baseline_mse"}``。
+    """
+    torch.manual_seed(seed)
+    L, H = lookback_window, forecasting_horizon
+    tag = f"[{label}] " if label else ""
+
+    bin_edges, _, _ = compute_shared_bin_edges(data, L, num_bins)
+    student_train, student_val, student_test, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=H, num_bins=num_bins,
+        val_size=val_size, test_size=test_size, offset=0, batch_size=batch_size,
+        bin_edges=bin_edges)
+
+    if verbose:
+        print(f"\n{'=' * 50}")
+        print(f"{tag}baseline_converged  H={H:2d}  Epochs={epochs}  "
+              f"Lookback={L}  patience={patience}")
+        print(f"{'=' * 50}")
+
+    ce = nn.CrossEntropyLoss()
+    baseline = RNN(L, hidden, num_bins, num_layers).to(device)
+    opt = optim.Adam(baseline.parameters(), lr=lr)
+    stop = EarlyStopper(patience=patience)
+    epochs_run = 0
+    for epoch in range(epochs):
+        epochs_run = epoch + 1
+        baseline.train()
+        for _, x, y in student_train:
+            x = x.float().to(device).view(-1, 1, L)
+            y = y.long().to(device)
+            opt.zero_grad()
+            ce(baseline(x), y).backward()
+            opt.step()
+        baseline.eval()
+        with torch.no_grad():
+            vl = sum(ce(baseline(x.float().to(device).view(-1, 1, L)),
+                        y.long().to(device)).item()
+                     for _, x, y in student_val) / len(student_val)
+        if stop.step(vl, baseline):
+            break
+    stop.restore(baseline)
+
+    baseline_mse = evaluate_with_ph(baseline, student_test, lookback_window=L)
+    if verbose:
+        print(f"  Baseline(converged): {baseline_mse:.4f}  (epochs_run={epochs_run})")
+    return {"lookback": L, "horizon": H, "epochs_run": epochs_run,
+            "baseline_mse": baseline_mse}
+
+
 # ================================================================
 #  Adaptive distillation weights (A/B/C/D) — independent flow
 # ================================================================
