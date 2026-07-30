@@ -196,6 +196,26 @@ def run_lh_sweep_exp(args):
                              "T": args.temperature, "epochs": args.epochs})
 
 
+def run_floor_sweep_exp(args):
+    """对应 cstr/run_floor_sweep.py:地板成因战役(τ=100 深挖 L×H 网格)。
+
+    记录 {baseline, baseline_converged, teacher, fgl_student, A_iter, E_iter} 每
+    (dataset, L, H, seed),写 cstr/results/floor_sweep.csv,供 H1-H4 检验。
+    """
+    sys.path.insert(0, _CSTR_DIR)
+    import run_floor_sweep
+    entries = run_floor_sweep.load_entries(["tau100"])
+    cells = {"tau100": run_floor_sweep.default_tau100_grid()}
+    seeds = list(range(args.seeds if args.seeds else 3))
+    run_floor_sweep.run(
+        entries, cells, seeds,
+        alpha=args.alpha, temperature=args.temperature, bins=args.bins,
+        epochs=args.epochs, round_epochs=args.round_epochs,
+        batch_size=args.batch_size, patience=args.patience, K=args.K,
+        conv_epochs=100, conv_patience=10,
+        outdir=os.path.join(_CSTR_DIR, "results"), verbose=True)
+
+
 # ================================================================
 #  实验开关配置  —— enabled=True 的实验在 `python cstr/run.py` 时运行
 # ================================================================
@@ -208,6 +228,7 @@ EXPERIMENTS = {
     "adaptive_weight": dict(fn=run_adaptive_weight_exp, enabled=False, note="自适应蒸馏权重(teacher−student MSE 差距)A~E;E=零地板放大版,实测有效(L20H15)"),
     "iterative_distill": dict(fn=run_iterative_distill_exp, enabled=False, note="迭代自适应蒸馏 4 臂(A-single/E-single/A-iter/E-iter);Phase 0 先跑典型点"),
     "lh_sweep":        dict(fn=run_lh_sweep_exp,    enabled=True,  note="L×H 网格扫描(主线)"),
+    "floor_sweep":      dict(fn=run_floor_sweep_exp, enabled=False, note="地板成因战役:τ=100 深挖 L×H,记录 baseline/teacher/E_iter 等地板量(H1-H4)"),
 }
 
 
