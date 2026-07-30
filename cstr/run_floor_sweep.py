@@ -88,54 +88,58 @@ def run(entries, cells_by_dataset, seeds, *, alpha=0.5, temperature=4.0, bins=50
     cells_by_dataset: {label: [(L,H), ...]}. Returns list of row dicts.
     """
     os.makedirs(outdir, exist_ok=True)
-    rows = []
-    for entry in entries:
-        label = entry["label"]
-        data = entry["data"]
-        tau = entry["tau"]
-        per = entry["periodicity"]
-        cells = cells_by_dataset.get(label, [])
-        if verbose:
-            print(f"\n=== {label}  (tau={tau}, per={per:.3f}, {len(cells)} cells) ===",
-                  flush=True)
-        for (L, H) in cells:
-            for s in seeds:
-                r_fgl = run_fgl_experiment(
-                    data, lookback_window=L, forecasting_horizon=H,
-                    alpha=alpha, temperature=temperature, num_bins=bins, epochs=epochs,
-                    batch_size=batch_size, patience=patience, seed=s, verbose=False,
-                    label=f"{label}/L{L}_H{H}/s{s}")
-                r_conv = run_baseline_converged(
-                    data, lookback_window=L, forecasting_horizon=H, num_bins=bins,
-                    epochs=conv_epochs, patience=conv_patience, batch_size=batch_size,
-                    seed=s, verbose=False, label=f"{label}/L{L}_H{H}/s{s}")
-                r_it = run_iterative_distillation(
-                    data, L=L, H=H, alpha=alpha, temperature=temperature, num_bins=bins,
-                    epochs=epochs, round_epochs=round_epochs, batch_size=batch_size,
-                    patience=patience, K=K, seed=s, variant="E", verbose=False)
-                row = {"dataset": label, "tau": tau, "periodicity": per,
-                       "L": L, "H": H, "LplusH_minus_1": L + H - 1, "seed": s,
-                       "baseline_mse": r_fgl["baseline"],
-                       "baseline_converged_mse": r_conv["baseline_mse"],
-                       "teacher_mse": r_fgl["teacher"],
-                       "fgl_student_mse": r_fgl["student"],
-                       "A_iter_mse": r_it["A_iter"]["student_mse"],
-                       "E_iter_mse": r_it["E_iter"]["student_mse"]}
-                rows.append(row)
-                if verbose:
-                    print(f"  L={L:3d} H={H:2d} s{s}: base={row['baseline_mse']:.1f} "
-                          f"baseC={row['baseline_converged_mse']:.1f} "
-                          f"tch={row['teacher_mse']:.1f} "
-                          f"E_iter={row['E_iter_mse']:.1f}", flush=True)
-
     out = os.path.join(outdir, "floor_sweep.csv")
-    with open(out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=COLUMNS)
-        w.writeheader()
-        for r in rows:
-            w.writerow(r)
-    if verbose:
-        print(f"\nwrote {out}  ({len(rows)} rows)")
+    rows = []
+    # 增量写入:每算完一个 cell-seed 就 flush,长任务(约 2h)中途崩溃不丢已完成行。
+    f = open(out, "w", newline="")
+    writer = csv.DictWriter(f, fieldnames=COLUMNS)
+    writer.writeheader()
+    f.flush()
+    try:
+        for entry in entries:
+            label = entry["label"]
+            data = entry["data"]
+            tau = entry["tau"]
+            per = entry["periodicity"]
+            cells = cells_by_dataset.get(label, [])
+            if verbose:
+                print(f"\n=== {label}  (tau={tau}, per={per:.3f}, {len(cells)} cells) ===",
+                      flush=True)
+            for (L, H) in cells:
+                for s in seeds:
+                    r_fgl = run_fgl_experiment(
+                        data, lookback_window=L, forecasting_horizon=H,
+                        alpha=alpha, temperature=temperature, num_bins=bins, epochs=epochs,
+                        batch_size=batch_size, patience=patience, seed=s, verbose=False,
+                        label=f"{label}/L{L}_H{H}/s{s}")
+                    r_conv = run_baseline_converged(
+                        data, lookback_window=L, forecasting_horizon=H, num_bins=bins,
+                        epochs=conv_epochs, patience=conv_patience, batch_size=batch_size,
+                        seed=s, verbose=False, label=f"{label}/L{L}_H{H}/s{s}")
+                    r_it = run_iterative_distillation(
+                        data, L=L, H=H, alpha=alpha, temperature=temperature, num_bins=bins,
+                        epochs=epochs, round_epochs=round_epochs, batch_size=batch_size,
+                        patience=patience, K=K, seed=s, variant="E", verbose=False)
+                    row = {"dataset": label, "tau": tau, "periodicity": per,
+                           "L": L, "H": H, "LplusH_minus_1": L + H - 1, "seed": s,
+                           "baseline_mse": r_fgl["baseline"],
+                           "baseline_converged_mse": r_conv["baseline_mse"],
+                           "teacher_mse": r_fgl["teacher"],
+                           "fgl_student_mse": r_fgl["student"],
+                           "A_iter_mse": r_it["A_iter"]["student_mse"],
+                           "E_iter_mse": r_it["E_iter"]["student_mse"]}
+                    rows.append(row)
+                    writer.writerow(row)
+                    f.flush()
+                    if verbose:
+                        print(f"  L={L:3d} H={H:2d} s{s}: base={row['baseline_mse']:.1f} "
+                              f"baseC={row['baseline_converged_mse']:.1f} "
+                              f"tch={row['teacher_mse']:.1f} "
+                              f"E_iter={row['E_iter_mse']:.1f}", flush=True)
+        if verbose:
+            print(f"\nwrote {out}  ({len(rows)} rows)")
+    finally:
+        f.close()
     return rows
 
 
