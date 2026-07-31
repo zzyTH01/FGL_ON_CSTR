@@ -14,6 +14,7 @@
     data.py           —— create_time_series_dataset / create_seq_dataset
     distillation.py   —— KL / KL_weighted / seq_KL / compute_weights
     training.py       —— device / EarlyStopper / evaluate* / run_fgl_experiment /
+                         run_iterative_distillation(双权重分布 E/E-soft)/
                          run_adaptive_weight / run_adaptive_inference / run_seq2seq
     sweep.py          —— run_lh_sweep (通用 L×H 扫描 + 热力图 + 报告)
 """
