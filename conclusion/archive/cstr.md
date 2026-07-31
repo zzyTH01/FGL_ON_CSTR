@@ -429,7 +429,7 @@ create_time_series_dataset(..., bin_edges=shared_bin_edges)
 
 为排查"CSTR 的周期性是否是根因"，进行了两轮尝试。
 
-**参数扫描**（`cstr/param_sweep.py`）：在 U、K、流量三个维度上扫描 21 组参数。全部 periodicity > 0.93，无一组产生非周期行为。H₂/O₂ 燃烧的负反馈开关天然产生鲁棒的周期 1 振荡。
+**参数扫描**（`cstr/archive/param_sweep.py`）：在 U、K、流量三个维度上扫描 21 组参数。全部 periodicity > 0.93，无一组产生非周期行为。H₂/O₂ 燃烧的负反馈开关天然产生鲁棒的周期 1 振荡。
 
 **外部正弦驱动**（`cstr/generate_forced.py`）：对进气流量施加正弦扰动（A=0.5, f=0.05Hz），periodicity 从 0.952 降至 0.489。FGL Δ 仍为 ~0%。外部驱动产生的是准周期（两个频率的加性叠加），相邻轨迹平行移动，Teacher 仍无独占信息。
 
@@ -536,7 +536,7 @@ $$\begin{aligned} \frac{dx}{dt} &= \sigma(y - x) \\ \frac{dy}{dt} &= x(\rho - z)
 | 28 | 经典混沌 | ~1.1 | τ≈17 | > 0 |
 | 60 | 强混沌 | ~1.6 | τ≈30 | > 0 且更稳定 |
 
-新建 `lorenz/generate_lorenz.py`，用 `scipy.integrate.solve_ivp` 生成数据，取 x(t) 作为观测序列，直接复用 `fgl_cstr.py` 的 FGL 流水线。
+新建 `lorenz/archive/generate_lorenz.py`(后并入 `lorenz/run.py`)，用 `scipy.integrate.solve_ivp` 生成数据，取 x(t) 作为观测序列，直接复用 `fgl_cstr.py` 的 FGL 流水线。
 
 ### 10.2 结果
 

@@ -114,5 +114,5 @@ CSTR/MG 都属周期性较强信号 → **val≈test**(相邻窗口分布近乎�
 | MG Phase 0(负结果)+ E-soft 验证 | `conclusion/iterative_pilot_phase0_mg.md` |
 | 方法实现 | `fgl_common/training.py::run_iterative_distillation`(+ `_iterate_student` / `_compute_arm_weights` / `_should_stop`);`fgl_common/distillation.py::compute_weights`(变体 A/B/C/D/E/**E-soft**,`w_floor` 可调) |
 | CSTR sweep / 分析 / 可视化 | `cstr/sweep_iterative.py`、`cstr/archive/analyze_iterative.py`、`cstr/archive/plot_iterative_rounds.py` |
-| MG sweep / 可视化 | `mackey_glass/sweep_iterative.py`、`mackey_glass/plot_iterative_rounds.py` |
+| MG sweep / 可视化 | `mackey_glass/archive/sweep_iterative.py`、`mackey_glass/archive/plot_iterative_rounds.py` |
 | 测试 | `tests/fgl_common/test_iterative_distillation.py`(17 用例,含 E-soft + w_floor) |

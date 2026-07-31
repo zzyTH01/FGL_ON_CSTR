@@ -510,7 +510,7 @@ L=3 时 Teacher MSE 从 31.3 升至 34.8（Teacher 自身质量同步下降）�
 
 #### 方向 7：参数扫描与外部驱动
 
-**操作 A（参数扫描）**：`cstr/param_sweep.py` 在 U、K、流量三个维度上扫描 21 组参数。
+**操作 A（参数扫描）**：`cstr/archive/param_sweep.py` 在 U、K、流量三个维度上扫描 21 组参数。
 
 **数据 A**：全部 periodicity > 0.93，无一组产生非周期行为。
 
