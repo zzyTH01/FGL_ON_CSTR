@@ -36,7 +36,7 @@ python cstr/run.py -e baseline,lh_sweep  # run specific ones
 python cstr/run.py --list                # list all + switch state + notes
 ```
 
-- **`cstr/run.py`** — baseline / lstm / regression / seq2seq / adaptive / adaptive_weight / **lh_sweep** / **iterative_distill** (enabled: baseline, lh_sweep, iterative_distill). Non-mainline CSTR optimizations default off. (`adaptive_weight` variant E — amplified teacher−student MSE-gap weighting — is verified effective on CSTR; see `conclusion/`. `iterative_distill` runs both `E`/`E-soft` weight distributions via `--distill_variants`; CSV → `cstr/results/iterative_distill.csv`.)
+- **`cstr/run.py`** — baseline / lstm / regression / seq2seq / adaptive / adaptive_weight / **lh_sweep** / **iterative_distill** / floor_sweep / delayed_fgl / delayed_iter / iter_grid / adaptive_grid / lyapunov (enabled: baseline, lh_sweep, iterative_distill; everything else off). Non-mainline CSTR optimizations default off. (`adaptive_weight` variant E — amplified teacher−student MSE-gap weighting — is verified effective on CSTR; see `conclusion/`. `iterative_distill` runs both `E`/`E-soft` weight distributions via `--distill_variants`; CSV → `cstr/results/iterative_distill.csv`. Off-by-default experiments wrap driver modules kept in `cstr/` root — `run_fgl_delayed.py`, `run_iterative_delayed.py`, `sweep_iterative.py`, `sweep_adaptive.py`, `lyapunov_delayed.py`, `run_floor_sweep.py` — each exposing a `run_all(args)`/API entry the EXPERIMENTS fn calls.)
 - **`mackey_glass/run.py`** — base / drift / **lh_sweep** / tau_sweep / l_threshold / h_threshold / geometry / iterative_distill (enabled: base, lh_sweep; iterative_distill stays **off** — MG negative result, CLI/CSV ready). Threshold/geometry tests verify the L+H-1≥τ formula.
 - **`lorenz/run.py`** — **generate** (ρ sweep) / **lh_sweep** (ρ=60 strong chaos).
 
@@ -66,11 +66,11 @@ Teacher dataset uses `offset=H-1`, `forecasting_horizon=1`; student uses `offset
 cstr/  mackey_glass/  lorenz/
 ├── run.py            # unified entry (EXPERIMENTS switches)
 ├── data/             # *.pkl datasets (consolidated)
-├── results/          # sweep CSVs + heatmaps + reports (+ plots/ subdir)
+├── results/          # sweep CSVs (+ plots/ for PNGs, logs/ for run logs)
 ├── archive/          # old single-purpose scripts (traceability)
 └── (mackey_glass only) utils/utils.py  # re-export fgl_common + MackeyGlass class
 fgl_common/           # shared library (models/data/distillation/training/sweep)
-conclusion/           # research summaries (final_conclusions.md is the key one)
+conclusion/           # research summaries + experiment report MDs (final_conclusions.md is the key one)
 docs/                 # references: paper PDF, Cantera notebook, notes
 ```
 

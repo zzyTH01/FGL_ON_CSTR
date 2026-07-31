@@ -38,22 +38,16 @@ def _load(name="data_h2o.pkl"):
     raise FileNotFoundError(name)
 
 
-def main():
-    ap = argparse.ArgumentParser(description="L×H sweep: adaptive variant E vs A")
-    ap.add_argument("--L_values", default="8,20,35,50,72")
-    ap.add_argument("--H_values", default="5,15,30,45,60")
-    ap.add_argument("--variants", default="A,E")
-    ap.add_argument("--seeds", type=int, default=2)
-    ap.add_argument("--epochs", type=int, default=30)
-    ap.add_argument("--alpha", type=float, default=0.5)
-    ap.add_argument("-T", "--temperature", type=float, default=4.0, dest="temperature")
-    ap.add_argument("--bins", type=int, default=50)
-    args = ap.parse_args()
+def run_all(args):
+    """核心逻辑:L×H 网格 × variants × seeds 跑自适应蒸馏,写 adaptive_lh_sweep.csv + 热力图。
 
-    Ls = [int(x) for x in args.L_values.split(",")]
-    Hs = [int(x) for x in args.H_values.split(",")]
-    variants = [v.strip() for v in args.variants.split(",")]
-    seeds = list(range(args.seeds))
+    接受 argparse Namespace;与 cstr/run.py 的字段共用部分直接读取,专有字段
+    (L_values/H_values/variants)用 getattr 缺省,供 run.py 统一入口调用。
+    """
+    Ls = [int(x) for x in (getattr(args, "L_values", None) or "8,20,35,50,72").split(",")]
+    Hs = [int(x) for x in (getattr(args, "H_values", None) or "5,15,30,45,60").split(",")]
+    variants = [v.strip() for v in (getattr(args, "variants", None) or "A,E").split(",")]
+    seeds = list(range(getattr(args, "seeds", 2)))
     data = _load()
 
     outdir = os.path.join(_CSTR_DIR, "results")
@@ -93,6 +87,20 @@ def main():
                 print(f"[{done}/{total}] L={L:<3} H={H:<3}: done", flush=True)
 
     _report(results, Ls, Hs, seeds, outdir)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="L×H sweep: adaptive variant E vs A")
+    ap.add_argument("--L_values", default="8,20,35,50,72")
+    ap.add_argument("--H_values", default="5,15,30,45,60")
+    ap.add_argument("--variants", default="A,E")
+    ap.add_argument("--seeds", type=int, default=2)
+    ap.add_argument("--epochs", type=int, default=30)
+    ap.add_argument("--alpha", type=float, default=0.5)
+    ap.add_argument("-T", "--temperature", type=float, default=4.0, dest="temperature")
+    ap.add_argument("--bins", type=int, default=50)
+    args = ap.parse_args()
+    run_all(args)
 
 
 def _report(results, Ls, Hs, seeds, outdir):

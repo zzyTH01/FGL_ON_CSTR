@@ -48,20 +48,11 @@ def load_series(fn):
     return t, np.asarray(t[:, 0], dtype=float)
 
 
-def main():
-    import argparse
-    p = argparse.ArgumentParser()
-    p.add_argument("--L", type=int, default=20)
-    p.add_argument("--H", type=int, default=15)
-    p.add_argument("--alpha", type=float, default=0.5)
-    p.add_argument("-T", "--temperature", type=float, default=4.0, dest="temperature")
-    p.add_argument("--bins", type=int, default=50)
-    p.add_argument("--epochs", type=int, default=30)
-    p.add_argument("--batch_size", type=int, default=64)
-    p.add_argument("--patience", type=int, default=5)
-    p.add_argument("--seeds", type=int, default=3)
-    args = p.parse_args()
+def run_all(args):
+    """核心逻辑:6 个延迟数据集 × seeds 跑 FGL,写 fgl_delayed_summary.csv。
 
+    接受 argparse Namespace(与 cstr/run.py 的字段兼容),供 run.py 统一入口调用。
+    """
     rows = []
     for label, fn in DATASETS:
         path = os.path.join(DATA, fn)
@@ -111,6 +102,22 @@ def main():
         print(f"{r['dataset']:22s} {r['periodicity']:6.3f} {r['baseline_mse']:10.4f} "
               f"{r['student_mse']:10.4f} {r['improvement']:+7.1f}%±{r['improvement_sd']:.1f}")
     print(f"\nwrote {out}")
+
+
+def main():
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--L", type=int, default=20)
+    p.add_argument("--H", type=int, default=15)
+    p.add_argument("--alpha", type=float, default=0.5)
+    p.add_argument("-T", "--temperature", type=float, default=4.0, dest="temperature")
+    p.add_argument("--bins", type=int, default=50)
+    p.add_argument("--epochs", type=int, default=30)
+    p.add_argument("--batch_size", type=int, default=64)
+    p.add_argument("--patience", type=int, default=5)
+    p.add_argument("--seeds", type=int, default=3)
+    args = p.parse_args()
+    run_all(args)
 
 
 if __name__ == "__main__":

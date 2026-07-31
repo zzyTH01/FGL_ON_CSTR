@@ -45,22 +45,11 @@ DATASETS = [
 ARMS = ("A_single", "E_single", "A_iter", "E_iter")
 
 
-def main():
-    import argparse
-    p = argparse.ArgumentParser()
-    p.add_argument("--L", type=int, default=20)
-    p.add_argument("--H", type=int, default=15)
-    p.add_argument("--alpha", type=float, default=0.5)
-    p.add_argument("-T", "--temperature", type=float, default=4.0, dest="temperature")
-    p.add_argument("--bins", type=int, default=50)
-    p.add_argument("--epochs", type=int, default=30)
-    p.add_argument("--round_epochs", type=int, default=15)
-    p.add_argument("--batch_size", type=int, default=64)
-    p.add_argument("--patience", type=int, default=5)
-    p.add_argument("--K", type=int, default=5)
-    p.add_argument("--seeds", type=int, default=3)
-    args = p.parse_args()
+def run_all(args):
+    """核心逻辑:延迟数据集 × seeds 跑 E 变体迭代蒸馏,写 iterative_delayed_summary.csv。
 
+    接受 argparse Namespace(与 cstr/run.py 的字段兼容),供 run.py 统一入口调用。
+    """
     os.makedirs(RESULTS, exist_ok=True)
     rows = []
     for label, fn in DATASETS:
@@ -129,6 +118,24 @@ def main():
     print(f"\nwrote {out}")
     print("\nKey: E_iter Δinit% > 0  =>  continuous adaptive distillation lowered")
     print("student MSE below the standard one-pass FGL student (A_single).")
+
+
+def main():
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--L", type=int, default=20)
+    p.add_argument("--H", type=int, default=15)
+    p.add_argument("--alpha", type=float, default=0.5)
+    p.add_argument("-T", "--temperature", type=float, default=4.0, dest="temperature")
+    p.add_argument("--bins", type=int, default=50)
+    p.add_argument("--epochs", type=int, default=30)
+    p.add_argument("--round_epochs", type=int, default=15)
+    p.add_argument("--batch_size", type=int, default=64)
+    p.add_argument("--patience", type=int, default=5)
+    p.add_argument("--K", type=int, default=5)
+    p.add_argument("--seeds", type=int, default=3)
+    args = p.parse_args()
+    run_all(args)
 
 
 if __name__ == "__main__":

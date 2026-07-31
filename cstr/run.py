@@ -225,6 +225,43 @@ def run_floor_sweep_exp(args):
         outdir=os.path.join(_CSTR_DIR, "results"), verbose=True)
 
 
+def run_delayed_fgl_exp(args):
+    """FGL on 延迟反馈数据集(周期→非周期)。对应 cstr/run_fgl_delayed.py。"""
+    sys.path.insert(0, _CSTR_DIR)
+    import run_fgl_delayed
+    run_fgl_delayed.run_all(args)
+
+
+def run_delayed_iter_exp(args):
+    """E 变体迭代蒸馏 on 延迟数据集。对应 cstr/run_iterative_delayed.py。"""
+    sys.path.insert(0, _CSTR_DIR)
+    import run_iterative_delayed
+    run_iterative_delayed.run_all(args)
+
+
+def run_iter_grid_exp(args):
+    """迭代蒸馏 L×H 网格扫描。对应 cstr/sweep_iterative.py。"""
+    sys.path.insert(0, _CSTR_DIR)
+    import sweep_iterative
+    sweep_iterative.run_all(args)
+
+
+def run_adaptive_grid_exp(args):
+    """自适应蒸馏变体 E vs A L×H 网格。对应 cstr/sweep_adaptive.py。"""
+    sys.path.insert(0, _CSTR_DIR)
+    import sweep_adaptive
+    sweep_adaptive.run_all(args)
+
+
+def run_lyapunov_exp(args):
+    """Lyapunov 指数估计(全部延迟数据集)。对应 cstr/lyapunov_delayed.py。"""
+    sys.path.insert(0, _CSTR_DIR)
+    import lyapunov_delayed
+    glob_pat = os.path.join(_CSTR_DIR, "data", "data_delayed_stable_h2o_tau*_s1_A0.9_b0.03.pkl")
+    out = os.path.join(_CSTR_DIR, "results", "lyapunov_tau.csv")
+    lyapunov_delayed.estimate_all(glob_pat, out, burn_frac=0.2)
+
+
 # ================================================================
 #  实验开关配置  —— enabled=True 的实验在 `python cstr/run.py` 时运行
 # ================================================================
@@ -239,6 +276,11 @@ EXPERIMENTS = {
                               note="迭代自适应蒸馏(E 硬 / E-soft 稍软化,双权重分布);CSTR 已验证有效"),
     "lh_sweep":        dict(fn=run_lh_sweep_exp,    enabled=True,  note="L×H 网格扫描(主线)"),
     "floor_sweep":      dict(fn=run_floor_sweep_exp, enabled=False, note="地板成因战役:τ=100 深挖 L×H,记录 baseline/teacher/E_iter 等地板量(H1-H4)"),
+    "delayed_fgl":      dict(fn=run_delayed_fgl_exp, enabled=False, note="FGL on 延迟反馈数据集(周期→非周期);对应 run_fgl_delayed.py"),
+    "delayed_iter":     dict(fn=run_delayed_iter_exp, enabled=False, note="E 变体迭代蒸馏 on 延迟数据集;对应 run_iterative_delayed.py"),
+    "iter_grid":        dict(fn=run_iter_grid_exp, enabled=False, note="迭代蒸馏 L×H 网格扫描;对应 sweep_iterative.py"),
+    "adaptive_grid":    dict(fn=run_adaptive_grid_exp, enabled=False, note="自适应变体 E vs A L×H 网格;对应 sweep_adaptive.py"),
+    "lyapunov":         dict(fn=run_lyapunov_exp, enabled=False, note="Lyapunov 指数估计(全部延迟数据集);对应 lyapunov_delayed.py"),
 }
 
 

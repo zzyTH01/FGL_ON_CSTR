@@ -37,12 +37,12 @@ def _load(name="data_h2o.pkl"):
 
 
 def _parse_cells(args):
-    if args.grid:
+    if getattr(args, "grid", False):
         Ls = [8, 20, 35, 50, 72]
         Hs = [5, 15, 30, 45, 60]
         return [(L, H) for L in Ls for H in Hs]
     pairs = []
-    for tok in args.cells.split(";"):
+    for tok in (getattr(args, "cells", None) or "20,15;8,30;72,15").split(";"):
         tok = tok.strip()
         if not tok:
             continue
@@ -51,30 +51,24 @@ def _parse_cells(args):
     return pairs
 
 
-def main():
-    ap = argparse.ArgumentParser(description="iterative distillation 4-arm sweep")
-    ap.add_argument("--cells", default="20,15;8,30;72,15", help="semicolon-separated L,H pairs")
-    ap.add_argument("--grid", action="store_true", help="5x5 full grid (overrides --cells)")
-    ap.add_argument("--seeds", type=int, default=3)
-    ap.add_argument("--epochs", type=int, default=20)
-    ap.add_argument("--round_epochs", type=int, default=10)
-    ap.add_argument("--K", type=int, default=3)
-    ap.add_argument("--alpha", type=float, default=0.5)
-    ap.add_argument("-T", "--temperature", type=float, default=4.0, dest="temperature")
-    ap.add_argument("--bins", type=int, default=50)
-    ap.add_argument("--variant", default="E", help="weighting variant: E / E-soft / C / D")
-    ap.add_argument("--w_floor", type=float, default=None, help="[E-soft] 软地板(默认 0.2)")
-    args = ap.parse_args()
+def run_all(args):
+    """核心逻辑:L×H 网格 × seeds 跑迭代蒸馏 4 臂,写 iterative_sweep{tag}.csv + 曲线图。
+
+    接受 argparse Namespace;与 cstr/run.py 的字段共用部分直接读取,专有字段
+    (cells/grid/variant/w_floor)用 getattr 缺省,供 run.py 统一入口调用。
+    """
+    cells = _parse_cells(args)
+    seeds = list(range(getattr(args, "seeds", 3)))
+    data = _load()
+    variant = getattr(args, "variant", "E") or "E"
+    w_floor = getattr(args, "w_floor", None)
 
     _parts = []
-    if args.variant != "E":
-        _parts.append(args.variant)
-    if args.w_floor is not None:
-        _parts.append(f"wf{args.w_floor}")
+    if variant != "E":
+        _parts.append(variant)
+    if w_floor is not None:
+        _parts.append(f"wf{w_floor}")
     tag = ("_" + "_".join(_parts)) if _parts else ""
-    cells = _parse_cells(args)
-    seeds = list(range(args.seeds))
-    data = _load()
     outdir = os.path.join(_CSTR_DIR, "results")
     os.makedirs(outdir, exist_ok=True)
     csv_path = os.path.join(outdir, f"iterative_sweep{tag}.csv")
@@ -93,7 +87,7 @@ def main():
             res = run_iterative_distillation(
                 data, L=L, H=H, alpha=args.alpha, temperature=args.temperature,
                 num_bins=args.bins, epochs=args.epochs, round_epochs=args.round_epochs,
-                K=args.K, seed=s, variant=args.variant, w_floor=args.w_floor, verbose=False)
+                K=args.K, seed=s, variant=variant, w_floor=w_floor, verbose=False)
             for arm, r in res.items():
                 per_arm[arm].append(r["student_mse"])
                 curves_val[arm].append(r["mse_curve_val"])
@@ -113,6 +107,23 @@ def main():
               f"(E_iter vs A_iter {rel:+.1f}%)", flush=True)
 
     _report(cell_results, outdir, tag)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="iterative distillation 4-arm sweep")
+    ap.add_argument("--cells", default="20,15;8,30;72,15", help="semicolon-separated L,H pairs")
+    ap.add_argument("--grid", action="store_true", help="5x5 full grid (overrides --cells)")
+    ap.add_argument("--seeds", type=int, default=3)
+    ap.add_argument("--epochs", type=int, default=20)
+    ap.add_argument("--round_epochs", type=int, default=10)
+    ap.add_argument("--K", type=int, default=3)
+    ap.add_argument("--alpha", type=float, default=0.5)
+    ap.add_argument("-T", "--temperature", type=float, default=4.0, dest="temperature")
+    ap.add_argument("--bins", type=int, default=50)
+    ap.add_argument("--variant", default="E", help="weighting variant: E / E-soft / C / D")
+    ap.add_argument("--w_floor", type=float, default=None, help="[E-soft] 软地板(默认 0.2)")
+    args = ap.parse_args()
+    run_all(args)
 
 
 def _report(cell_results, outdir, tag=""):
