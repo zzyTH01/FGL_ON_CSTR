@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Future-Guided Learning (FGL) — implementation for the Nature Communications 2025 paper *"A predictive approach to enhance time-series forecasting"*. FGL enhances time-series forecasting via knowledge distillation: a **teacher** model sees near-future data (short horizon), a **student** model predicts far-future data (long horizon), and the teacher's insights are distilled into the student during training.
 
-The repo covers **three regression domains** studying *when* FGL helps. Robust findings: **L (lookback) and H (horizon) are the dominant variables** (with a `L+H-1 ≥ τ` threshold on MG and a baseline "floor" effect on CSTR); the teacher–student **information asymmetry** is the proximal mechanism. The "number of feedback loops" (CSTR=1, MG=2, Lorenz=∞) is treated as an **exploratory, correlational hypothesis, not a causal conclusion**. MG τ=13 and Lorenz ρ=60 are good benchmarks; CSTR's period-1 oscillation yields limited FGL gain. Full research findings live in `conclusion/项目汇报总结.md` (most up-to-date) and `conclusion/final_conclusions.md`. (The original paper's EEG experiments — AES/CHBMIT — are outside this study's scope and have been removed.)
+The repo covers **three regression domains** studying *when* FGL helps. Robust findings: **L (lookback) and H (horizon) are the dominant variables** (with a `L+H-1 ≥ τ` threshold on MG and a baseline "floor" effect on CSTR); the teacher–student **information asymmetry** is the proximal mechanism. The "number of feedback loops" (CSTR=1, MG=2, Lorenz=∞) is treated as an **exploratory, correlational hypothesis, not a causal conclusion**. MG τ=13 and Lorenz ρ=60 are good benchmarks; CSTR's period-1 oscillation yields limited FGL gain. Full research findings live in `conclusion/研究进展报告.md` (latest, 2026-07, for reporting) and `conclusion/项目汇报总结.md` (most complete); `conclusion/final_conclusions.md` covers the earlier three-system conclusions. Superseded/duplicate reports are archived in `conclusion/archive/`. (The original paper's EEG experiments — AES/CHBMIT — are outside this study's scope and have been removed.)
 
 | Domain | Directory | Task type | Model | Metric |
 |--------|-----------|-----------|-------|--------|
@@ -74,7 +74,7 @@ cstr/  mackey_glass/  lorenz/
 ├── archive/          # old single-purpose scripts (traceability)
 └── (mackey_glass only) utils/utils.py  # re-export fgl_common + MackeyGlass class
 fgl_common/           # shared library (models/data/distillation/training/sweep)
-conclusion/           # research summaries + experiment report MDs (final_conclusions.md is the key one)
+conclusion/           # research summaries + experiment report MDs (研究进展报告.md = latest; archive/ for superseded)
 docs/                 # references: paper PDF, Cantera notebook, notes
 ```
 

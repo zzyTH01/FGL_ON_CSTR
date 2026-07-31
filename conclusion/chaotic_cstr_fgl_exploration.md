@@ -131,10 +131,10 @@ base          121.6    109.0     39.2    30.1     0.32×            0.25×
 - `cstr/run_iterative_delayed.py` —— 自适应连续蒸馏驱动
 - `tests/cstr/test_delayed_stable.py` —— 14 单元测试(全仓 31/31 通过)
 
-**报告/数据(分支上,`cstr/results/` + `cstr/data/`):**
-- `delayed_tau_sweep_report.md` + `delayed_tau_sweep_s1_A0.9_b0.3.{csv,png}` —— 过渡曲线
-- `fgl_delayed_report.md` + `fgl_delayed_summary.csv` —— 一次性 FGL
-- `iterative_delayed_report.md` + `iterative_delayed_summary.csv` —— 自适应连续蒸馏
+**报告/数据(分支上,`cstr/results/` + `cstr/data/`;过程报告已归档 `conclusion/archive/`):**
+- `conclusion/archive/delayed_tau_sweep_report.md` + `cstr/results/plots/delayed_tau_sweep_s1_A0.9_b0.03.png` —— 过渡曲线
+- `conclusion/archive/fgl_delayed_report.md` + `cstr/results/fgl_delayed_summary.csv` —— 一次性 FGL
+- `conclusion/archive/iterative_delayed_report.md` + `cstr/results/iterative_delayed_summary.csv` —— 自适应连续蒸馏
 - `data_delayed_stable_h2o_tau*_s1_A0.9_b0.03.pkl` —— 13 个非周期数据集
 - `delayed_stable_h2o_panels.png` —— 数据集可视化
 

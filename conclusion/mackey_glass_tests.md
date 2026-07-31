@@ -75,6 +75,19 @@
 
 **L 扫描是单变量干净实验**（Teacher offset=4 固定），结论可靠。
 
+### 补充分析 1：Baseline MSE 是驱动力
+
+L≤9 时 Baseline 困难（MSE 5~8），因为 9 步的 lookback 不足以捕获 τ=13 的延迟反馈结构。Teacher（offset=4，输入窗口覆盖至 t+L+4=t+13）拥有独占信息。
+
+L≥10 时 Baseline 突然变强（MSE 0.5~0.7）。10 步的 lookback 恰好覆盖了足够的历史信息，Student 已经能在自己窗口内直接"看到"与 τ=13 延迟相关的模式——这正是信息不对称消失的直接证据。
+
+### 补充分析 2：转变点偏移分析
+
+转变发生在 L≈10，与简单的 L=τ=13 预测有 3 步偏差。原因：
+
+- Teacher offset=H−1=4 使 Teacher 有效视野为 L+4；L=10 时 Teacher 有效视野=14，恰好覆盖 τ=13。
+- L=9→10 的转变对应 `L + (H−1) ≥ τ`（即 L+4 ≥ 13 → L ≥ 9），而非简单 L ≥ τ——联合窗口假说被精确支持。
+
 ---
 
 ## 实验二：H 扫描
@@ -110,6 +123,15 @@
 | 12 | 16 | 4.506 ± 1.709 | −0.071 ± 0.887 | −3.7% ± 17.5% |
 | 14 | 18 | 10.668 ± 2.828 | +7.189 ± 2.731 | +65.7% ± 10.6% |
 | 16 | 20 | 8.856 ± 3.760 | +6.848 ± 2.723 | +75.3% ± 6.7% |
+
+### 统计检验
+
+| 检验 | 结果 |
+|------|------|
+| Welch t-test (H<9 vs H≥9) | t=-2.1645, **p=0.035** |
+| Changepoint | **H≈6.5** (predicted H=9, deviation=−2.5) |
+| ΔAIC (linear − piecewise at H=9) | **+3.0** (weak) |
+| Baseline MSE 稳定性 | **FAILED** — H=4→6 有 5.0× 跳跃, H=12→14 有 2.4× 跳跃 |
 
 ### 结论
 
@@ -204,6 +226,6 @@ $$\text{FGL 信息优势消失条件: } L + (H-1) \ge \tau$$
 
 | 实验 | CSV | 报告 |
 |------|------|------|
-| L 扫描 | `threshold_quick_results.csv` (18 rows) | `threshold_quick_summary.md` |
-| H 扫描 | `h_threshold_results.csv` (55 rows) | `h_threshold_full_report.md` |
-| 诊断 | — | `h_threshold_diagnostic.md` |
+| L 扫描 | `mackey_glass/results/threshold_quick_results.csv` (18 rows) | 本合集(原 `threshold_quick_summary.md` 已并入) |
+| H 扫描 | `mackey_glass/results/h_threshold_results.csv` (55 rows) | 本合集(原 `h_threshold_full_report.md` 已并入) |
+| 诊断 | — | 本合集实验三(原 `h_threshold_diagnostic.md` 已并入) |

@@ -192,6 +192,6 @@ L=20, H=12, α=0.5, T=4, RNN 分类模式 → Δ=+25.7%
 | `cstr/results/anchor_regression_results.csv` | 回归模式测试 (25行) |
 | `cstr/results/anchor_alpha_T_results.csv` | α×T 网格搜索 (108行) |
 | `cstr/results/adaptive_weight_results.csv` | 自适应权重消融 (20行) |
-| `cstr_anchor_optimization_summary.md` | 任务一~四详细报告 |
-| `cstr/cstr_per_sample_mse.png` | 逐样本 MSE 诊断图 |
-| `cstr/cstr_adaptive_best_predictions.png` | 最优自适应蒸馏预测图 |
+| `best_sample_cstr.md`(本文) | 任务一~四详细报告 |
+| `cstr/results/plots/cstr_per_sample_mse.png` | 逐样本 MSE 诊断图 |
+| `cstr/results/plots/cstr_adaptive_best_predictions.png` | 最优自适应蒸馏预测图 |

@@ -145,7 +145,7 @@ FGL 生效的直接机制是**信息不对称**：教师凭 `offset=H−1` 的�
 
 ## 附录：相关文档
 
-- 最权威综合结论：[`项目汇报总结.md`](项目汇报总结.md)
-- CSTR 详细实验：[`cstr.md`](cstr.md)
+- 最权威综合结论：[`项目汇报总结.md`](项目汇报总结.md) + [`研究进展报告.md`](研究进展报告.md)
+- CSTR 详细实验(历史档案)：[`archive/cstr.md`](archive/cstr.md)
 - 几何检验：[`geometry_test_full_report.md`](geometry_test_full_report.md)、[`geometry_test2_full_report.md`](geometry_test2_full_report.md)
-- 全部实验数据汇总：[`data.md`](data.md)
+- 全部实验数据汇总(历史档案)：[`archive/data.md`](archive/data.md)
