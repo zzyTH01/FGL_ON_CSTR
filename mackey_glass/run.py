@@ -343,20 +343,30 @@ def run_geometry(args):
 
 
 def run_iterative_distill_exp(args):
-    """迭代自适应蒸馏 4 臂对比(A-single / E-single / A-iter / E-iter)在 MG τ=13 上。"""
+    """迭代自适应蒸馏:变体列表 × 单/迭代臂,双权重分布(E 硬 / E-soft 稍软化)。"""
+    import csv
     data, lyap = generate_mg_data(tau=args.tau, n_points=args.n_points)
     print(f"MG τ={args.tau}, Lyapunov={lyap:+.6f}")
     n_seeds = args.seeds if args.seeds else 3
+    variants = tuple(v.strip() for v in args.distill_variants.split(","))
     rows = []
     for s in range(n_seeds):
         arms = run_iterative_distillation(
             data, L=args.L, H=args.H, alpha=args.alpha, temperature=args.temperature,
             num_bins=args.bins, epochs=args.epochs, round_epochs=args.round_epochs,
-            batch_size=args.batch_size, K=args.K, patience=args.patience, seed=s, verbose=False)
+            batch_size=args.batch_size, K=args.K, patience=args.patience, seed=s,
+            weight_distributions=variants, w_floor=args.w_floor, verbose=False)
         for arm, r in arms.items():
             rows.append({"seed": s, "arm": arm, "student_mse": r["student_mse"],
-                         "baseline_mse": r["baseline_mse"], "fgl_delta": r["fgl_delta"],
-                         "init_delta": r["init_delta"], "rounds_used": r["rounds_used"]})
+                         "baseline_mse": r["baseline_mse"], "teacher_mse": r["teacher_mse"],
+                         "fgl_delta": r["fgl_delta"], "init_delta": r["init_delta"],
+                         "rounds_used": r["rounds_used"], "total_epochs": r["total_epochs"]})
+
+    out = os.path.join(_RESULTS_DIR, "iterative_distill.csv")
+    with open(out, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader(); w.writerows(rows)
+    print(f"  → {out} ({len(rows)} rows)")
 
     print(f"\n{'=' * 60}\nSUMMARY: iterative_distill MG (L={args.L} H={args.H} τ={args.tau})\n{'=' * 60}")
     agg = defaultdict(lambda: defaultdict(list))
@@ -367,13 +377,11 @@ def run_iterative_distill_exp(args):
     def _sd(a):
         a = np.array(a); return a.std(ddof=1) if len(a) > 1 else 0.0
 
-    for arm in ("A_single", "E_single", "A_iter", "E_iter"):
-        if arm not in agg:
-            continue
+    for arm in sorted(agg):
         sm = np.array(agg[arm]["student_mse"])
         fd = np.array(agg[arm]["fgl_delta"])
         idt = np.array(agg[arm]["init_delta"])
-        print(f"  {arm:9s}: student_mse={sm.mean():.3f}±{_sd(sm):.3f}  "
+        print(f"  {arm:14s}: student_mse={sm.mean():.3f}±{_sd(sm):.3f}  "
               f"Δbase={fd.mean():+.1f}%±{_sd(fd):.1f}  "
               f"Δinit={idt.mean():+.1f}%±{_sd(idt):.1f}  (n={len(sm)})")
 
@@ -388,7 +396,7 @@ EXPERIMENTS = {
     "h_threshold": dict(fn=run_h_threshold,  enabled=False, note="固定 L 扫 H —— 阈值对称检验"),
     "geometry":    dict(fn=run_geometry,     enabled=False, note="(L,H) 配置几何证伪 L+H-1≥τ"),
     "iterative_distill": dict(fn=run_iterative_distill_exp, enabled=False,
-                              note="迭代自适应蒸馏 4 臂(MG τ=13);Phase 0 先跑典型点"),
+                              note="迭代自适应蒸馏(E/E-soft 双权重分布);MG 负结果,默认关"),
 }
 
 
@@ -417,6 +425,10 @@ def main():
     parser.add_argument("--H_values", type=str, default=None, help="[lh_sweep/h_threshold] H 列表")
     parser.add_argument("--round_epochs", type=int, default=20, help="[iterative_distill] 每轮 epoch")
     parser.add_argument("--K", type=int, default=5, help="[iterative_distill] 最大迭代轮数")
+    parser.add_argument("--distill_variants", type=str, default="E,E-soft",
+                        help="[iterative_distill] 权重分布变体,逗号分隔(如 E,E-soft)")
+    parser.add_argument("--w_floor", type=float, default=0.2,
+                        help="[iterative_distill] E-soft 软地板(默认 0.2)")
     args = parser.parse_args()
 
     if args.list:
