@@ -662,6 +662,36 @@ def run_adaptive_weight(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
 # ================================================================
 #  Iterative adaptive distillation — helpers
 # ================================================================
+def _resolve_variants(variant, weight_distributions):
+    """把 variant / weight_distributions 归一化为变体元组(校验+缺省)。
+
+    - 两者同传 → ValueError(歧义)。
+    - 都不传 → ('E',)(保持旧默认)。
+    - 含 'A' 或空 → ValueError(A 是对照臂,固定包含,不许重复指定)。
+    """
+    if variant is not None and weight_distributions is not None:
+        raise ValueError("variant 与 weight_distributions 不能同时指定;"
+                         "请只传 weight_distributions")
+    if weight_distributions is not None:
+        vd = tuple(weight_distributions)
+    elif variant is not None:
+        vd = (variant,)
+    else:
+        vd = ("E",)
+    if not vd:
+        raise ValueError("weight_distributions 不能为空")
+    if "A" in vd:
+        raise ValueError("'A' 是对照臂(固定包含),不要传入 weight_distributions")
+    return vd
+
+
+def _resolve_w_floor(variant, w_floor, w_floors):
+    """per-variant 软地板:w_floors[variant] 优先于全局 w_floor。"""
+    if w_floors is not None and variant in w_floors:
+        return float(w_floors[variant])
+    return None if w_floor is None else float(w_floor)
+
+
 def _should_stop(mse_history, eps, N_stall, max_rounds):
     """迭代蒸馏停止规则(纯函数)。
 
@@ -795,16 +825,20 @@ def _iterate_student(student_0, teacher, variant, max_rounds,
 
 def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
                                epochs=30, round_epochs=15, batch_size=64, patience=5,
-                               K=5, eps=0.01, N_stall=2, seed=42, variant="E",
+                               K=5, eps=0.01, N_stall=2, seed=42, variant=None,
+                               weight_distributions=None, w_floor=None, w_floors=None,
                                val_size=0.2, test_size=0.2, lr=1e-4, verbose=True,
-                               e_iter_snapshot_fn=None, w_floor=None):
-    """迭代(暖启动)自适应蒸馏,2×2 四臂因子设计(共享 round-0)。
+                               e_iter_snapshot_fn=None):
+    """迭代(暖启动)自适应蒸馏,双权重分布变体 × 单/迭代臂(共享 round-0)。
 
     训一次 teacher / baseline / student_0(round-0,uniform KL),然后分支:
       A_single = student_0 本身(不迭代)。
-      E_single = 暖启 1 轮,E 权重(来自 student_0)。
       A_iter   = 暖启 ≤K 轮,权重恒均匀(归因对照)。
-      E_iter   = 暖启 ≤K 轮,每轮重估 E 权重(新方法)。
+      对每个 v ∈ weight_distributions('E' 硬零地板 / 'E-soft' 稍软化 sigmoid):
+        {v}_single = 暖启 1 轮,v 权重。
+        {v}_iter   = 暖启 ≤K 轮,每轮重估 v 权重。
+    变体名规范化:连字符 → 下划线('E-soft' → 'E_soft_*')。
+    w_floor 仅作用于 E-soft;w_floors 可 per-variant 覆盖。
     停止规则在 val MSE,返回每臂 keep-best-by-val 的 student,报告其 test MSE。
     """
     torch.manual_seed(seed)
@@ -882,21 +916,34 @@ def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_b
                   temperature=temperature, round_epochs=round_epochs, patience=patience,
                   eps=eps, N_stall=N_stall, lr=lr, w_floor=w_floor)
 
-    def _arm(variant, max_rounds, snapshot_fn=None):
+    def _arm(variant, max_rounds, snapshot_fn=None, w_floor_override=None):
         if max_rounds == 0:
             return {"rounds_used": 0, "total_epochs": 0,
                     "mse_curve_val": [evaluate(student_0, student_val, L)],
                     "mse_curve_test": [evaluate(student_0, student_test, L)],
                     "student": student_0}
+        c = dict(common)                     # common 已含 w_floor=None 键
+        if w_floor_override is not None:
+            c["w_floor"] = w_floor_override
         return _iterate_student(student_0, teacher, variant, max_rounds,
-                                snapshot_fn=snapshot_fn, **common)
+                                snapshot_fn=snapshot_fn, **c)
 
-    arms = {
-        "A_single": _arm("A", 0),
-        "E_single": _arm(variant, 1),
-        "A_iter":   _arm("A", K),
-        "E_iter":   _arm(variant, K, snapshot_fn=e_iter_snapshot_fn),
-    }
+    variants = _resolve_variants(variant, weight_distributions)
+
+    def _snapshots():
+        # 多变体时快照只挂第一个变体的 iter 臂(与 e_iter_snapshot_fn 语义一致)
+        for i, v in enumerate(variants):
+            if i == 0:
+                yield v, e_iter_snapshot_fn
+            else:
+                yield v, None
+
+    arms = {"A_single": _arm("A", 0), "A_iter": _arm("A", K)}
+    for v, snap in _snapshots():
+        vnorm = v.replace("-", "_")
+        vw = _resolve_w_floor(v, w_floor, w_floors)
+        arms[f"{vnorm}_single"] = _arm(v, 1, snapshot_fn=None, w_floor_override=vw)
+        arms[f"{vnorm}_iter"] = _arm(v, K, snapshot_fn=snap, w_floor_override=vw)
 
     results = {}
     for name, a in arms.items():

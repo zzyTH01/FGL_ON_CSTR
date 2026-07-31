@@ -255,3 +255,74 @@ def test_compute_weights_E_soft_w_floor_param():
     assert min(w_hi.values()) > min(w_default.values())
     assert all(v >= 0.5 - 1e-6 for v in w_hi.values())   # 新下界 0.5
     assert all(v <= 4.0 + 1e-6 for v in w_hi.values())    # 上界不变
+
+
+# ==================== Task 1: 双权重分布重构 ====================
+import pytest as _pytest
+from fgl_common.training import _resolve_variants, _resolve_w_floor
+
+
+def test_resolve_variants_default_is_E():
+    assert _resolve_variants(None, None) == ("E",)
+
+
+def test_resolve_variants_alias_equivalence():
+    assert _resolve_variants("E-soft", None) == ("E-soft",)
+    assert _resolve_variants(None, ("E", "E-soft")) == ("E", "E-soft")
+
+
+def test_resolve_variants_conflict_raises():
+    with _pytest.raises(ValueError):
+        _resolve_variants("E", ("E", "E-soft"))
+
+
+def test_resolve_variants_rejects_A_and_empty():
+    with _pytest.raises(ValueError):
+        _resolve_variants(None, ("A",))
+    with _pytest.raises(ValueError):
+        _resolve_variants(None, ())
+
+
+def test_resolve_w_floor_default_and_override():
+    assert _resolve_w_floor("E-soft", None, None) is None          # → compute_weights 内部 0.2
+    assert _resolve_w_floor("E-soft", None, {"E-soft": 0.1}) == 0.1
+    assert _resolve_w_floor("E-soft", 0.5, None) == 0.5
+    assert _resolve_w_floor("E-soft", 0.5, {"E-soft": 0.1}) == 0.1  # per-variant 优先
+    assert _resolve_w_floor("E", 0.5, {"E-soft": 0.1}) == 0.5       # 无关变体的覆盖被忽略
+
+
+def test_weight_distributions_list_produces_all_arms():
+    res = run_iterative_distillation(
+        _tiny_data(), L=20, H=15, num_bins=50, epochs=3, round_epochs=2,
+        batch_size=8, K=2, seed=0, verbose=False,
+        weight_distributions=("E", "E-soft"))
+    assert set(res) == {"A_single", "A_iter", "E_single", "E_iter",
+                        "E_soft_single", "E_soft_iter"}
+
+
+def test_variant_alias_equivalence():
+    res_alias = run_iterative_distillation(
+        _tiny_data(), L=20, H=15, num_bins=50, epochs=3, round_epochs=2,
+        batch_size=8, K=2, seed=0, verbose=False, variant="E-soft")
+    res_list = run_iterative_distillation(
+        _tiny_data(), L=20, H=15, num_bins=50, epochs=3, round_epochs=2,
+        batch_size=8, K=2, seed=0, verbose=False, weight_distributions=("E-soft",))
+    assert set(res_alias) == set(res_list)
+    assert set(res_alias["E_soft_iter"]) == set(res_list["E_soft_iter"])
+
+
+def test_A_in_weight_distributions_rejected():
+    with _pytest.raises(ValueError):
+        run_iterative_distillation(
+            _tiny_data(), L=20, H=15, num_bins=50, epochs=3, round_epochs=2,
+            batch_size=8, K=2, seed=0, verbose=False, weight_distributions=("A",))
+
+
+def test_w_floors_override_reaches_arm_weights(tiny_loaders):
+    """w_floors 的 per-variant 地板经 _compute_arm_weights 到达权重。"""
+    s = tiny_loaders
+    student = RNN(s["L"], 16, s["num_bins"], 1).to(device)
+    teacher = RNN(s["L"], 16, s["num_bins"], 1).to(device)
+    w = _compute_arm_weights("E-soft", student, teacher, s["sf"], s["tf"],
+                             s["indices"], s["L"], s["H"], w_floor=0.1)
+    assert all(v >= 0.1 - 1e-6 for v in w.values())

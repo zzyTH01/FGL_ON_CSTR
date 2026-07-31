@@ -187,18 +187,27 @@ def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_b
             else:
                 yield v, None
 
+    def _arm(variant, max_rounds, snapshot_fn=None, w_floor_override=None):
+        if max_rounds == 0:
+            return {"rounds_used": 0, "total_epochs": 0,
+                    "mse_curve_val": [evaluate(student_0, student_val, L)],
+                    "mse_curve_test": [evaluate(student_0, student_test, L)],
+                    "student": student_0}
+        c = dict(common)                     # common 已含 w_floor=None 键
+        if w_floor_override is not None:
+            c["w_floor"] = w_floor_override
+        return _iterate_student(student_0, teacher, variant, max_rounds,
+                                snapshot_fn=snapshot_fn, **c)
+
     arms = {"A_single": _arm("A", 0), "A_iter": _arm("A", K)}
     for v, snap in _snapshots():
         vnorm = v.replace("-", "_")
         vw = _resolve_w_floor(v, w_floor, w_floors)
-        common_w = dict(common)
-        if vw is not None:
-            common_w["w_floor"] = vw
-        arms[f"{vnorm}_single"] = _arm(v, 1, snapshot_fn=None, **common_w)
-        arms[f"{vnorm}_iter"] = _arm(v, K, snapshot_fn=snap, **common_w)
+        arms[f"{vnorm}_single"] = _arm(v, 1, snapshot_fn=None, w_floor_override=vw)
+        arms[f"{vnorm}_iter"] = _arm(v, K, snapshot_fn=snap, w_floor_override=vw)
 ```
 
-注意 `_arm` 的签名是 `_arm(variant, max_rounds, snapshot_fn=None)`;`common` dict 不含 `snapshot_fn` 键(含 `w_floor=None` 键),所以 `**common_w` 与 `snapshot_fn=` 无冲突。single 与 iter 两臂都用 per-variant `common_w`(E-soft 的 sigmoid 地板对单轮臂同样生效);`vw` 为 None(E 变体)时 `common_w` 与 `common` 等价,`w_floor=None` 语义不变。
+注意 `_arm` 新签名 `_arm(variant, max_rounds, snapshot_fn=None, w_floor_override=None)`:内部 `c = dict(common)` 后覆盖 `w_floor` 再展开给 `_iterate_student`(common 含 `w_floor=None` 键、不含 `snapshot_fn` 键,无冲突)。single 与 iter 两臂都用 per-variant 地板(E-soft 的 sigmoid 地板对单轮臂同样生效);`vw` 为 None(E 变体)时 `c` 与 `common` 等价,`w_floor=None` 语义不变。
 
 - [ ] **Step 5: 运行全部测试确认通过**
 
