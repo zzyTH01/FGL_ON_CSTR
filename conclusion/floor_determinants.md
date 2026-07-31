@@ -77,4 +77,4 @@
 - **val≈test 过拟合**:周期性残余 → keep-best-by-val 近似在 test 选优;H4 的配对 t 偏乐观。独立 holdout 待做。
 - **τ vs periodicity 混杂**:横向锚点 τ50/150 同时变两量,横向结论仅"趋势"。**方案 C(去混杂:固定 per 变 τ)** 是把 H1 变因果检验的下一步。
 - **MSE 单位**为 bin-index²(50 bins),仅相对分析。
-- 图:`cstr/results/floor_h{1,2,3,4}_*.png`。
+- 图:`cstr/results/plots/floor_h{1,2,3,4}_*.png`。

@@ -126,7 +126,7 @@ base          121.6    109.0     39.2    30.1     0.32×            0.25×
 
 **脚本(分支上):**
 - `cstr/generate_delayed_stable.py` —— 稳定延迟反馈生成 + τ-sweep + CLI
-- `cstr/plot_delayed_stable.py` —— 数据集小多重图
+- `cstr/archive/plot_delayed_stable.py` —— 数据集小多重图
 - `cstr/run_fgl_delayed.py` —— 一次性 FGL 驱动
 - `cstr/run_iterative_delayed.py` —— 自适应连续蒸馏驱动
 - `tests/cstr/test_delayed_stable.py` —— 14 单元测试(全仓 31/31 通过)

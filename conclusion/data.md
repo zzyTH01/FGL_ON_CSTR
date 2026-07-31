@@ -121,7 +121,7 @@ Mackey-Glass 方程时间序列，τ=13，10000 点。
 
 固定 τ=13, L=5, α=0.5, epochs=50, bins=50。扫描 H ∈ {2, 4, 6, 7, 8, 9, 10, 11, 12, 14, 16}，每 H 值 5 个种子（seed 0~4）。Teacher offset = H−1（随 H 变化）。
 
-### 原始数据（逐种子，仅展示关键 H 值；完整 55 行见源文件 `mackey_glass/exp/results/data_3_mg_h_scan.md`）
+### 原始数据（逐种子，仅展示关键 H 值；完整 55 行见源文件 `conclusion/data_3_mg_h_scan.md`）
 
 | H | L+H−1 | Seed | Baseline MSE | Teacher MSE | Student MSE | Abs Improvement | FGL Δ% |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|

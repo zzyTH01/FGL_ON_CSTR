@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """Mackey-Glass 统一实验入口。
 
-合并 ``mackey_glass/exp/`` 下的训练与分析脚本(base / drift / lh_sweep / tau_sweep /
-l_threshold / h_threshold / geometry),通过 ``EXPERIMENTS`` 配置字典的 ``enabled``
-字段控制运行(开关),命令行 ``-e`` 可覆盖。
+通过 ``EXPERIMENTS`` 配置字典的 ``enabled`` 字段控制实验是否运行(开关),
+命令行 ``-e`` 可覆盖。训练与分析逻辑在 ``fgl_common`` 包与 ``utils/utils.py``
+(MackeyGlass 数据集类)中;旧单用途脚本在 ``archive/``(仅溯源)。
 
 用法::
 
@@ -13,7 +13,8 @@ l_threshold / h_threshold / geometry),通过 ``EXPERIMENTS`` 配置字典的 ``e
     uv run python mackey_glass/run.py -e h_threshold --seeds 3
 
 研究结论(见 ``conclusion/final_conclusions.md``):MG τ=13 是 FGL 最佳验证集
-(倍周期分岔,2 个反馈环)。几何条件 L+H-1≥τ 在固定 H 扫 L 时严格成立。
+(倍周期分岔,2 个反馈环)。几何条件 L+H-1≥τ 在固定 H 扫 L 时严格成立
+(CSTR 上该巧合被证伪,见 ``conclusion/floor_study_final_report.md``)。
 """
 import argparse
 import csv

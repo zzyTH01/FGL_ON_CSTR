@@ -1,8 +1,12 @@
 #!/usr/bin/env python
 """CSTR 统一实验入口。
 
-把原本散落在 ``cstr/exp/`` 下的 8 个实验脚本合并为单文件,通过 ``EXPERIMENTS``
-配置字典的 ``enabled`` 字段控制是否运行(内置开关),命令行 ``-e`` 可覆盖。
+通过 ``EXPERIMENTS`` 配置字典的 ``enabled`` 字段控制实验是否运行(内置开关),
+命令行 ``-e`` 可覆盖。大多数实验逻辑在 ``fgl_common`` 包中;较大的实验 driver
+保留为根目录模块(``run_floor_sweep.py`` / ``run_fgl_delayed.py`` /
+``run_iterative_delayed.py`` / ``sweep_iterative.py`` / ``sweep_adaptive.py`` /
+``lyapunov_delayed.py``,各暴露 ``run_all(args)`` 或等效 API),本文件薄包装。
+旧单用途脚本在 ``archive/``(仅溯源)。
 
 用法::
 
@@ -11,9 +15,10 @@
     uv run python cstr/run.py --list                # 列出所有实验 + 开关 + 说明
     uv run python cstr/run.py -e baseline -H 5 --alpha 0.5   # 带参数
 
-研究结论(见 ``conclusion/final_conclusions.md``):CSTR 单反馈环不适合 FGL,
-多数优化实验为"失败探索",故默认 ``enabled=False``,仅保留 baseline 与 lh_sweep 主线。
-所有训练逻辑实现在 ``fgl_common`` 包中,本文件仅做薄包装与开关调度。
+研究结论(见 ``conclusion/项目汇报总结.md`` 与 ``conclusion/final_conclusions.md``):
+CSTR 单反馈环 FGL 增益有限(地板效应),多数优化实验为"失败探索",默认
+``enabled=False``;主线为 baseline / lh_sweep / iterative_distill(双权重分布
+E 硬 + E-soft 稍软化,已验证有效)。
 """
 import argparse
 import os

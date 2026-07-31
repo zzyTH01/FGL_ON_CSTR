@@ -34,7 +34,7 @@ cstr/
 ### 依赖关系
 
 ```
-cstr/exp/fgl_cstr.py
+cstr/archive/fgl_cstr.py
     │
     ├── from utils.utils import RNN, create_time_series_dataset, KL
     │       ↑
@@ -265,13 +265,13 @@ mse = MSE(pred_bin, y_bin)                   # 与真实 bin 索引的 MSE
 
 ```bash
 # 单次运行
-python cstr/exp/fgl_cstr.py --horizon 5 --alpha 0.5 --epochs 30
+python cstr/archive/fgl_cstr.py --horizon 5 --alpha 0.5 --epochs 30
 
 # Horizon 扫描
-python cstr/exp/fgl_cstr.py --sweep --alpha 0.5 --epochs 30
+python cstr/archive/fgl_cstr.py --sweep --alpha 0.5 --epochs 30
 
 # 带 Page-Hinkley 漂移检测
-python cstr/exp/fgl_cstr.py --sweep --use_ph --alpha 0.0
+python cstr/archive/fgl_cstr.py --sweep --use_ph --alpha 0.0
 ```
 
 ---
@@ -312,7 +312,7 @@ if bin_edges is None:
     bin_edges = np.linspace(y_train.min(), y_train.max(), num_bins - 1)
 ```
 
-#### 修改 2：`cstr/exp/fgl_cstr.py`
+#### 修改 2：`cstr/archive/fgl_cstr.py`
 
 在 `run_fgl()` 中，于调用 `create_time_series_dataset` 之前，从 Teacher 的全量 y_windows 计算统一的 bin edges：
 
@@ -472,7 +472,7 @@ $$\frac{dx}{dt} = \beta \cdot \frac{x(t-\tau)}{1 + [x(t-\tau)]^n} - \gamma \cdot
 
 ### 9.3 实验结果
 
-新建 `mackey_glass/exp/tau_sweep.py`。扫描 τ ∈ {10, 13, 17, 23, 30}。
+新建 `mackey_glass/archive/tau_sweep.py`。扫描 τ ∈ {10, 13, 17, 23, 30}。
 
 | τ | 分岔类型 | Lyapunov | Periodicity | Baseline MSE | Teacher MSE | **FGL Δ** |
 |:---:|------|:---:|:---:|:---:|:---:|:---:|
@@ -583,7 +583,7 @@ MG τ=13 的 FGL 峰值（+79.1%）被解释为倍周期分岔（反馈环=2）�
 
 ### 11.3 实验设计
 
-新建 `mackey_glass/exp/tau_sweep_geometry.py`。4 个 (L,H) 配置，覆盖不同的 L+H-1 值：
+新建 `mackey_glass/archive/tau_sweep_geometry.py`。4 个 (L,H) 配置，覆盖不同的 L+H-1 值：
 
 | Config | L | H | L+H−1 |
 |--------|---|:---:|:---:|
@@ -689,29 +689,29 @@ uv run python cstr/generate.py
 uv run python cstr/generate_forced.py --amplitude 0.5 --freq 0.05 --t_end 600
 
 # 运行 FGL 实验（分类模式）
-uv run python cstr/exp/fgl_cstr.py --horizon 5 --alpha 0.5 --epochs 30
+uv run python cstr/archive/fgl_cstr.py --horizon 5 --alpha 0.5 --epochs 30
 
 # 运行 FGL 实验（回归模式）
-uv run python cstr/exp/fgl_cstr_regression.py --horizon 5 --alpha 0.5 --epochs 30
+uv run python cstr/archive/fgl_cstr_regression.py --horizon 5 --alpha 0.5 --epochs 30
 
 # 运行 FGL 实验（LSTM 模式）
-uv run python cstr/exp/fgl_cstr_lstm.py --horizon 5 --alpha 0.5 --epochs 30
+uv run python cstr/archive/fgl_cstr_lstm.py --horizon 5 --alpha 0.5 --epochs 30
 
 # 运行 FGL 实验（Seq2Seq 周期预测）
-uv run python cstr/exp/fgl_cstr_seq2seq.py --horizon 72 --teacher_steps 5 --alpha 0.5 --epochs 50
+uv run python cstr/archive/fgl_cstr_seq2seq.py --horizon 72 --teacher_steps 5 --alpha 0.5 --epochs 50
 
 # 参数扫描（寻找非周期态）
 uv run python cstr/param_sweep.py
 
 # 数据分析
-uv run python cstr/analyze_data.py
+uv run python cstr/archive/analyze_data.py
 
 # 生成可视化
-uv run python cstr/plot_data.py
-uv run python cstr/plot_forced_comparison.py
+uv run python cstr/archive/plot_data.py
+uv run python cstr/archive/plot_forced_comparison.py
 
 # Mackey-Glass τ 扫描（混沌 vs FGL 对照实验）
-cd /tmp && source .venv/bin/activate && python mackey_glass/exp/tau_sweep.py --epochs 50
+cd /tmp && source .venv/bin/activate && python mackey_glass/archive/tau_sweep.py --epochs 50
 ```
 
 ### 依赖

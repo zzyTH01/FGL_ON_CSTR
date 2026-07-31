@@ -1,8 +1,8 @@
 # 迭代自适应蒸馏 — Phase 0 试点结果(2026-07-28)
 
 > 对应 spec `docs/superpowers/specs/2026-07-28-iterative-adaptive-distillation-design.md` §7 Phase 0。
-> Phase 0(K=3)数据:逐轮数值已收录于本文表格(`cstr/results/iterative_phase0_log.txt` 留有运行日志;原始 K=3 CSV 被 K=15 探索覆盖)。
-> 饱和探索(K=15)数据:`cstr/results/iterative_saturation_sweep.csv` + `iterative_saturation_curves.png` + `iterative_saturation_log.txt`。
+> Phase 0(K=3)数据:逐轮数值已收录于本文表格(`cstr/results/logs/iterative_phase0_log.txt` 留有运行日志;原始 K=3 CSV 被 K=15 探索覆盖)。
+> 饱和探索(K=15)数据:`cstr/results/iterative_saturation_sweep.csv` + `cstr/results/plots/iterative_saturation_curves.png` + `cstr/results/logs/iterative_saturation_log.txt`。
 
 ## 设置
 

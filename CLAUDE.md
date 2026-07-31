@@ -58,13 +58,17 @@ Teacher dataset uses `offset=H-1`, `forecasting_horizon=1`; student uses `offset
 
 ## CSTR data generation (kept as standalone scripts)
 
-`cstr/generate.py` (original H₂/O₂ combustion → `data/data.pkl`, `data/data_h2o.pkl`), `generate_dual_cstr.py`, `generate_forced.py`, `generate_delayed_feedback.py` are kept standalone (each has its own argparse + `--sweep`). They write to `cstr/`; move outputs into `cstr/data/` if regenerated. Requires `cantera >= 3.2.0`.
+`cstr/generate.py` (original H₂/O₂ combustion → `data/data.pkl`, `data/data_h2o.pkl`), `generate_dual_cstr.py`, `generate_forced.py`, `generate_delayed_feedback.py`, `generate_delayed_stable.py` (the active stable delayed-feedback generator — bounded control + onset + EMA, produces the τ-sweep datasets used by floor/lyapunov/delayed experiments; has tests in `tests/cstr/`) are kept standalone (each has its own argparse + `--sweep`). They write to `cstr/`; move outputs into `cstr/data/` if regenerated. Requires `cantera >= 3.2.0`.
 
 ## Directory layout (regression domains)
 
 ```
 cstr/  mackey_glass/  lorenz/
 ├── run.py            # unified entry (EXPERIMENTS switches)
+├── *_driver.py       # (cstr) large experiment drivers wrapped by run.py EXPERIMENTS
+│                     #   run_floor_sweep / run_fgl_delayed / run_iterative_delayed /
+│                     #   sweep_iterative / sweep_adaptive / lyapunov_delayed
+├── generate*.py      # (cstr) standalone data generators (cantera)
 ├── data/             # *.pkl datasets (consolidated)
 ├── results/          # sweep CSVs (+ plots/ for PNGs, logs/ for run logs)
 ├── archive/          # old single-purpose scripts (traceability)

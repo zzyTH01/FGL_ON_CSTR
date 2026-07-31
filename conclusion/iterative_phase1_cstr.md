@@ -2,7 +2,7 @@
 
 > 对应 spec `docs/superpowers/specs/2026-07-28-iterative-adaptive-distillation-design.md` §7 Phase 1。
 > 数据:`cstr/results/iterative_phase1_anchor.csv`(锚点 n=10)+ `iterative_phase1_grid.csv`(5×5 × 2 seeds)。
-> 分析脚本:`cstr/analyze_iterative.py`。前置 Phase 0 / 饱和分析:`conclusion/iterative_pilot_phase0.md`。
+> 分析脚本:`cstr/archive/analyze_iterative.py`。前置 Phase 0 / 饱和分析:`conclusion/iterative_pilot_phase0.md`。
 
 ## 设置
 

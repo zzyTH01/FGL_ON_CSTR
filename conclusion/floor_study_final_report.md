@@ -5,7 +5,7 @@
 **研究问题:** 在延迟反馈(混沌)CSTR 上,**是什么决定了能达到的最低 student MSE?如何才能达到它?**
 **一句话回答:** 地板主要由 (L, H) 与数据混沌度决定(可解释 ~72%);连续蒸馏能钻到"数据地板"之下,但**只在预测足够难(H≥15)时**;蒸馏的超参数(α/温度/加权)不决定地板。
 
-> 配套数据表(假设结构化 + 逐条对账)见 [`floor_determinants.md`](floor_determinants.md);原始数据 `cstr/results/floor_sweep.csv`(45 行)、`cstr/results/lyapunov_tau.csv`(13 行)、图 `cstr/results/floor_h{1..4}_*.png`。
+> 配套数据表(假设结构化 + 逐条对账)见 [`floor_determinants.md`](floor_determinants.md);原始数据 `cstr/results/floor_sweep.csv`(45 行)、`cstr/results/lyapunov_tau.csv`(13 行)、图 `cstr/results/plots/floor_h{1..4}_*.png`。
 
 ---
 

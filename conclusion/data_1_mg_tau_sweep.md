@@ -1,6 +1,6 @@
 # Data 1: MG τ-Sweep
 
-**Experiment:** `mackey_glass/exp/tau_sweep.py`  
+**Experiment:** `mackey_glass/archive/tau_sweep.py`  
 **Fixed:** L=8, H=5, α=0.5, epochs=50, bins=50, 1 seed per τ
 
 | τ | Lyapunov | Periodicity | Teacher MSE | Baseline MSE | Student MSE | FGL Δ% |

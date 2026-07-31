@@ -1,7 +1,7 @@
 # 迭代自适应蒸馏 — MG τ=13 Phase 0 试点结果(2026-07-28)
 
 > 对应 spec `docs/superpowers/specs/2026-07-28-iterative-adaptive-distillation-mg-design.md`。
-> 数据:`mackey_glass/results/iterative_mg_sweep.csv` + `iterative_mg_curves.png` + `iterative_mg_phase0_log.txt`。
+> 数据:`mackey_glass/results/iterative_mg_sweep.csv` + `mackey_glass/results/plots/iterative_mg_curves.png` + `mackey_glass/results/logs/iterative_mg_phase0_log.txt`。
 > 对照 CSTR 结论:`conclusion/iterative_pilot_phase0.md`。
 
 ## 设置
