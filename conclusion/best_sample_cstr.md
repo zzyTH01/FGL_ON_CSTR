@@ -97,7 +97,7 @@ L=20, H=15，α ∈ {0.0, 0.1, 0.3, 0.5, 0.7, 0.9} × T ∈ {2, 4, 6, 8, 10, 12}
 
 ## 五、自适应蒸馏权重
 
-> **更新（2026-07-24）—— 本节为修正前实现**。下文 Variant A/B/C/D 消融用的是 `max(0, CE_baseline − CE_teacher)` 标准、[0.2, 2.0] 温和归一化，且逐样本误差存在 teacher/student **索引错位**（teacher loader 的 `offset=H−1` 使约 91% 的比较落在错误目标上）。三者共同导致"C 方向正确但未显著（p=0.42）"。修正为 **teacher−student 逐样本 MSE 差距**（索引按 `j−(H−1)` 对齐）+ **零地板放大变体 E**（归一化 [0,4]，student 已做对的点蒸馏权重=0）后，CSTR 上结果反转：L=20,H=15 达 Δinit=+33.2%（n=5，配对 p≈0.018）、5×5 L×H 网格 **47/50** cell×seed 上 E<A、平均 student MSE 降 30.4%。**两点限定**：温和变体 C 即使修正仍处噪声边缘（+10.6%），显著化主要来自放大版 E；且仅 CSTR 验证、MG/Lorenz 待移植。详见 [`final_conclusions.md`](final_conclusions.md) 顶部更新、[`项目汇报总结.md`](项目汇报总结.md) §3.4.3。下文旧数据保留以记录探索路径。
+> **更新（2026-07-24）—— 本节为修正前实现**。下文 Variant A/B/C/D 消融用的是 `max(0, CE_baseline − CE_teacher)` 标准、[0.2, 2.0] 温和归一化，且逐样本误差存在 teacher/student **索引错位**（teacher loader 的 `offset=H−1` 使约 91% 的比较落在错误目标上）。三者共同导致"C 方向正确但未显著（p=0.42）"。修正为 **teacher−student 逐样本 MSE 差距**（索引按 `j−(H−1)` 对齐）+ **零地板放大变体 E**（归一化 [0,4]，student 已做对的点蒸馏权重=0）后，CSTR 上结果反转：**5×5 L×H 网格 47/50 cell×seed 上 E<A、平均 student MSE 降 30.4%**（锚点 L20H15 的 n=5 运行原记 Δinit=+33.2%、p≈0.018，原始数据未存档、待补档，2026-08-06）。**两点限定**：温和变体 C 即使修正仍处噪声边缘（+10.6%），显著化主要来自放大版 E；且仅 CSTR 验证、MG/Lorenz 待移植。详见 [`final_conclusions.md`](final_conclusions.md) 顶部更新、[`项目汇报总结.md`](项目汇报总结.md) §3.4.3。下文旧数据保留以记录探索路径。
 
 ### 动机
 
