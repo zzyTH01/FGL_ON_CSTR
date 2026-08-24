@@ -1100,10 +1100,10 @@ def run_adaptive_inference(data, student_horizon=12, base_alpha=0.5, num_bins=50
 # ================================================================
 def run_seq2seq(data, student_horizon=72, teacher_steps=10, alpha=0.5, num_bins=50,
                 val_size=0.2, test_size=0.2, epochs=50, temperature=4,
-                lookback_window=8, batch_size=64, patience=5, verbose=True):
+                lookback_window=8, batch_size=64, patience=5, seed=42, verbose=True):
     """Seq2Seq FGL: teacher predicts K steps, student predicts H steps; KL on first K.
     Collected from ``cstr/exp/fgl_cstr_seq2seq.py``."""
-    torch.manual_seed(42)
+    torch.manual_seed(seed)
     hidden, layers, lr = 128, 2, 1e-4
     H, K = student_horizon, min(teacher_steps, student_horizon)
     L = lookback_window

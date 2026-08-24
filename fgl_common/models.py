@@ -19,7 +19,8 @@ class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_layers=2):
         super(RNN, self).__init__()
         self.rnn = nn.RNN(input_size, hidden_size, num_layers,
-                          batch_first=True, dropout=0.2)
+                          batch_first=True,
+                          dropout=0.2 if num_layers > 1 else 0.0)
         self.fc1 = nn.Linear(hidden_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, output_size)
 
@@ -39,7 +40,8 @@ class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_layers=2):
         super().__init__()
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers,
-                            batch_first=True, dropout=0.2)
+                            batch_first=True,
+                            dropout=0.2 if num_layers > 1 else 0.0)
         self.fc1 = nn.Linear(hidden_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, output_size)
 
@@ -58,7 +60,8 @@ class RNNRegression(nn.Module):
     def __init__(self, input_size, hidden_size=128, num_layers=2):
         super().__init__()
         self.rnn = nn.RNN(input_size, hidden_size, num_layers,
-                          batch_first=True, dropout=0.2)
+                          batch_first=True,
+                          dropout=0.2 if num_layers > 1 else 0.0)
         self.fc1 = nn.Linear(hidden_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, 1)
 
@@ -84,7 +87,8 @@ class SeqRNN(nn.Module):
         self.output_steps = output_steps
         self.num_bins = num_bins
         self.rnn = nn.RNN(input_size, hidden_size, num_layers,
-                          batch_first=True, dropout=0.2)
+                          batch_first=True,
+                          dropout=0.2 if num_layers > 1 else 0.0)
         self.fc1 = nn.Linear(hidden_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, output_steps * num_bins)
 

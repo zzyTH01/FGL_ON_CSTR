@@ -258,7 +258,6 @@ def _threshold_report(all_rows, scan_key, fixed_name, fixed_val, tau, out_prefix
 
     x_arr = np.array(scan_sorted)
     ai_arr = np.array([am[v]["ai"] for v in scan_sorted])
-    crit = int(tau - fixed_val + 1) if fixed_name == "L" else int(tau - fixed_val + 1)
     # critical scan value where L+H-1 = tau, given the fixed axis = fixed_val
     crit_scan = tau - fixed_val + 1
     cp_x, _, _ = find_changepoint(x_arr, ai_arr)
