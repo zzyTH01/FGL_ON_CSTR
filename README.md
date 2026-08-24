@@ -6,7 +6,7 @@
 
 This repository is a research study of **Future-Guided Learning (FGL)** (Nature Communications 2025, Gunasekaran et al.). FGL enhances time-series forecasting via teacher–student knowledge distillation: a **teacher** model sees near-future data, a **student** model predicts the far future, and the teacher's insight is distilled into the student by minimizing the discrepancy between their probability distributions.
 
-This fork focuses on **three regression / nonlinear-dynamical-system domains** — Mackey-Glass, CSTR, and Lorenz-63 — and studies *when and why* FGL helps. The original EEG (AES / CHB-MIT) experiments are **not part of this study and have been removed**. The most up-to-date synthesis of the research findings is in [`conclusion/项目汇报总结.md`](conclusion/项目汇报总结.md); a condensed version is in [`conclusion/final_conclusions.md`](conclusion/final_conclusions.md).
+This fork focuses on **three regression / nonlinear-dynamical-system domains** — Mackey-Glass, CSTR, and Lorenz-63 — and studies *when and why* FGL helps. The original EEG (AES / CHB-MIT) experiments are **not part of this study and have been removed**. The latest research report (for presentation) is [`conclusion/研究进展报告.md`](conclusion/研究进展报告.md); the most complete synthesis is [`conclusion/项目汇报总结.md`](conclusion/项目汇报总结.md), and the earlier three-system conclusions are in [`conclusion/final_conclusions.md`](conclusion/final_conclusions.md).
 
 ---
 
@@ -64,6 +64,8 @@ The selected device is printed at startup as `[fgl] device = ...`.
 | Lorenz-63 | `lorenz/` | 3D ODE chaotic (ρ=60) | generated on-the-fly via `scipy.integrate` |
 
 All three share one library — **`fgl_common/`** (RNN model, KL distillation, sliding-window discretization, the 3-stage teacher→baseline→student training loop, and an L×H sweep helper).
+
+> **Finding past experiment outputs.** Every `data/` and `results/` directory contains an `INDEX.md` documenting each file's experiment attribution, generating program, conditions, type, and a reading guide — start there when looking for a specific CSV/PNG/dataset. Layout convention: `results/*.csv` + `results/plots/*.png` + `results/logs/*`.
 
 ## 3. Running experiments
 

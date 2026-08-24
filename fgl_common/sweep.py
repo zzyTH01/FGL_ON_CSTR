@@ -92,8 +92,10 @@ def run_lh_sweep(run_fn, data, L_values, H_values, seeds,
             grid_b[i, j] = np.mean([r["baseline_mse"] for r in rs])
             grid_a[i, j] = np.mean([r["abs_improvement"] for r in rs])
 
+    plots_dir = os.path.join(outdir, "plots")
+    os.makedirs(plots_dir, exist_ok=True)
     _plot_heatmaps(grid_d, grid_a, grid_b, L_s, H_s,
-                   os.path.join(outdir, f"{name}.png"), title or name)
+                   os.path.join(plots_dir, f"{name}.png"), title or name)
     _write_report(os.path.join(outdir, f"{name}_report.md"), agg, L_s, H_s,
                   name, extra_meta, len(rows))
     if verbose:

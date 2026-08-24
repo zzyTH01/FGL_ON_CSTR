@@ -135,7 +135,7 @@ def run_generate(args):
                       f"{x_trim.std():8.3f}  {regime}")
                 results.append({"rho": rho, "periodicity": score, "lyap": lyap, "regime": regime})
                 if score < 0.85 or "PERIOD-DOUBLING" in regime:
-                    _save_pkl(x_trim, os.path.join(_data_dir(), f"lorenz_rho{rho}.pkl"),
+                    _save_pkl(x_trim, os.path.join(_data_dir(), f"lorenz_rho{rho:g}.pkl"),
                               f"Lorenz ρ={rho}")
             except Exception as e:
                 print(f"  {rho:8.1f}  {'─':>12s}  FAILED: {e}")
@@ -151,7 +151,7 @@ def run_generate(args):
         lyap = estimate_lyap(x_trim, args.dt)
         print(f"Periodicity: {score:.4f}, Lyap(est): {lyap:.6f}")
         print(f"x range: [{x_trim.min():.3f}, {x_trim.max():.3f}], std: {x_trim.std():.3f}")
-        _save_pkl(x_trim, os.path.join(_data_dir(), f"lorenz_rho{args.rho}.pkl"),
+        _save_pkl(x_trim, os.path.join(_data_dir(), f"lorenz_rho{args.rho:g}.pkl"),
                   f"Lorenz ρ={args.rho}")
 
 

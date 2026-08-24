@@ -1,6 +1,6 @@
+import os
 import pickle
 import torch
-from torch.utils.data import Dataset
 from utils import MackeyGlass
 # Assuming the MackeyGlass class and dependencies (jitcdde_lyap, numpy) are available
 
@@ -31,7 +31,9 @@ time_series_data = torch.cat((series_column_1, series_column_2), dim=1)
 
 print(f"Generation complete. Data shape: {time_series_data.shape}")
 
-output_filename = "data.pkl"
+_data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+os.makedirs(_data_dir, exist_ok=True)
+output_filename = os.path.join(_data_dir, "data.pkl")
 
 with open(output_filename, 'wb') as f:
     pickle.dump(time_series_data, f)

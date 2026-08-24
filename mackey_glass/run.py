@@ -61,6 +61,15 @@ def generate_mg_data(tau=DEFAULT_TAU, n_points=N_POINTS, seed=42):
     return torch.cat((col, col.clone()), dim=1), mg.lyap_exp
 
 
+def _resolve_data(name):
+    """数据路径:data/ 优先(统一布局),其次根目录(向后兼容)。"""
+    for d in ("data", "."):
+        p = os.path.join(_MG_DIR, d, name)
+        if os.path.exists(p):
+            return p
+    return os.path.join(_MG_DIR, "data", name)
+
+
 def _load_pkl_data(path):
     with open(path, "rb") as f:
         return pickle.load(f)
@@ -105,7 +114,7 @@ def piecewise_fit(x_arr, y_arr, bp):
 # ==================== Experiments ====================
 def run_base(args):
     """对应 base_exp.py:标准 FGL(用预生成 data.pkl)。"""
-    data = _load_pkl_data(os.path.join(_MG_DIR, "data.pkl"))
+    data = _load_pkl_data(_resolve_data("data.pkl"))
     run_fgl_experiment(data, lookback_window=args.L, forecasting_horizon=args.H,
                        alpha=args.alpha, temperature=args.temperature, num_bins=args.bins,
                        epochs=args.epochs, batch_size=args.batch_size, patience=args.patience,
@@ -114,7 +123,7 @@ def run_base(args):
 
 def run_drift(args):
     """对应 drift_exp.py:FGL + Page-Hinkley 漂移评估。"""
-    data = _load_pkl_data(os.path.join(_MG_DIR, "data.pkl"))
+    data = _load_pkl_data(_resolve_data("data.pkl"))
     run_fgl_experiment(data, lookback_window=args.L, forecasting_horizon=args.H,
                        alpha=args.alpha, temperature=args.temperature, num_bins=args.bins,
                        epochs=args.epochs, batch_size=args.batch_size, patience=args.patience,

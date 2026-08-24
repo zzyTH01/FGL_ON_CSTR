@@ -31,7 +31,8 @@ except ImportError:
     print("Error: cantera is required.")
     sys.exit(1)
 
-OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 _H2O2_PATH = os.path.join(os.path.dirname(ct.__file__), "data", "h2o2.yaml")
 
 
