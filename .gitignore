@@ -178,3 +178,4 @@ cython_debug/
 
 # Superpowers SDD scratch workspace (per-plan ledger/briefs/reports)
 .superpowers/
+.worktrees/
