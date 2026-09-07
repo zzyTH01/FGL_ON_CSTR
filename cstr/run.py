@@ -415,6 +415,7 @@ def _add_common_args(p):
                    help="[iterative_distill] E-soft 软地板(默认 0.2)")
     p.add_argument("--L_values", type=str, default=None, help="[lh_sweep] L 取值,逗号分隔")
     p.add_argument("--H_values", type=str, default=None, help="[lh_sweep] H 取值,逗号分隔")
+    p.add_argument("--quick", action="store_true", help="使用下一阶段实验的小规模冒烟配置")
 
 
 def main():
