@@ -28,7 +28,7 @@ def test_save_and_export(tmp_path):
     assert len(files) == 2
     with open(files[-1], "rb") as f:
         obj = pickle.load(f)
-    assert obj.shape == (n, 1)
+    assert obj.shape == (n, 2)
 
 
 def test_generate_complex_import_error(monkeypatch):

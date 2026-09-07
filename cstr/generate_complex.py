@@ -71,7 +71,8 @@ def export_single_channel_pkls(npz_path, outdir):
         created = []
         for channel in channels:
             series = np.asarray(payload[channel])
-            tensor = torch.tensor(series, dtype=torch.float64).unsqueeze(1)
+            column = torch.tensor(series, dtype=torch.float64).unsqueeze(1)
+            tensor = torch.cat((column, column.clone()), dim=1)
             filename = f"data_complex_cstr_{channel}_tau{tau}.pkl"
             output = outdir / filename
             with open(output, "wb") as f:
@@ -110,10 +111,9 @@ def generate(tau, outdir=_DEFAULT_OUTDIR, t_end=300.0, dt=0.1, k=6, overwrite=Fa
     if npz_path.exists() and not overwrite:
         return npz_path, export_single_channel_pkls(npz_path, outdir)
     result = simulate_complex_cstr(tau=tau, t_end=t_end, dt=dt)
-    mechanism_path = os.path.join(os.path.dirname(ct.__file__), "data", "h2o2.yaml")
-    species_names = _species_states(result, mechanism_path)
-    mass_fractions = result.get("mass_fraction_matrix")
-    if mass_fractions is None:
+    species_names = list(result["species_names"])
+    mass_fractions = result["species_matrix"]
+    if mass_fractions is None or mass_fractions.size == 0:
         raise RuntimeError("delayed CSTR simulator did not return species matrix")
     selected = select_channels(species_names, mass_fractions.T, result["T"], k=k)
     species_arrays = [mass_fractions[:, species_names.index(name)] for name in selected[1:]]
