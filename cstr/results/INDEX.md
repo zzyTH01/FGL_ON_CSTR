@@ -414,3 +414,13 @@
 5. **`adaptive_weight_results.csv` 含 A–D 四变体**,而脚本 docstring 只写 A/B/C——D 为后续补充;E 变体见第四组(archive 版脚本未含 E)。
 6. **`anchor_*.csv` 的产生脚本现位于 `cstr/archive/`**,原始路径为 `cstr/exp/`(其 `RESULTS_DIR` 指向当时目录,结果文件在 commit 6a24236 重构时归并入 `cstr/results/`)。
 7. **`delayed_tau_sweep_s-1_A0.3_b0.1.csv` 含 1 个 fail 行**(CanteraError),为负反馈构型的负对照数据,非数据损坏。
+
+## 外部时序预测 Baseline 系列(2026-09-18)
+
+### cstr_external_baselines.csv
+- **实验归属**:CSTR 外部 baseline 试点,用于与连续自适应蒸馏在同一连续物理值 MSE 口径下比较
+- **产生程序**:`cstr/baselines_driver.py`(入口 `cstr/run.py -e external_baselines`)
+- **实验条件**:`data_h2o.pkl`;试点为 L20/H15 与 L20/H12,5 seeds;方法 `ridge,dlinear,patchtst,gru,tcn`;深度模型最多 50 epochs,p patience=10
+- **数据口径**:直接预测 `y[t+L+H-1]`;按现有惯例做时序 train/val/test 切分;标准化仅用 train;MSE 反标准化为物理值
+- **基本类型**:每 `(dataset,L,H,method,seed)` 一行,列含 `val_mse,test_mse,n_test,epochs`
+- **读表指南**:按 method 聚合 `test_mse`;这是外部 baseline 结果,**不能与历史 bin-index MSE 直接混表**,也不能直接与未重评的 FGL/蒸馏结果混表

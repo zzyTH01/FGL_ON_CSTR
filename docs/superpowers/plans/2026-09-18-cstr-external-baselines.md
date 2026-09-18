@@ -33,8 +33,8 @@
 - Data contract: arrays shaped `(N, 1, L)`; target shaped `(N,)`; split key `train`, `val`, `test`.
 
 - [x] Step 1: Write failing tests for train-only scaling, chronological windows, ridge fitting, and shape contract.
-- [ ] Step 2: Implement continuous window preparation and ridge closed-form regression.
-- [ ] Step 3: Run focused tests.
+- [x] Step 2: Implement continuous window preparation and ridge closed-form regression.
+- [x] Step 3: Run focused tests.
 
 ### Task 2: Deep forecasting baselines
 
@@ -47,8 +47,8 @@
 - Produces: `run_forecasting_baseline(data, method, lookback_window, forecasting_horizon, seed, epochs, ...)` returning val/test MSE, prediction count, and epochs.
 
 - [x] Step 1: Write failing shape and one-step optimization/smoke tests.
-- [ ] Step 2: Implement DLinear, PatchTST, GRU, and TCN with generic early-stopped training.
-- [ ] Step 3: Run focused tests.
+- [x] Step 2: Implement DLinear, PatchTST, GRU, and TCN with generic early-stopped training.
+- [x] Step 3: Run focused tests.
 
 ### Task 3: CSTR integration
 
@@ -63,8 +63,8 @@
 - Output columns: `dataset,L,H,method,seed,val_mse,test_mse,n_test,epochs`.
 
 - [x] Step 1: Write failing driver/test-entry smoke tests using tiny data.
-- [ ] Step 2: Implement CSV driver, EXPERIMENTS entry, CLI parsing.
-- [ ] Step 3: Run focused tests.
+- [x] Step 2: Implement CSV driver, EXPERIMENTS entry, CLI parsing.
+- [x] Step 3: Run focused tests.
 
 ### Task 4: Documentation and verification
 
@@ -72,8 +72,6 @@
 - Modify: `cstr/results/INDEX.md`, `README.md` only if a natural entry point exists.
 
 - [x] Step 1: Document command, metric, methods, and pilot CSV attribution.
-- [ ] Step 2: Run full focused test suite.
-- [ ] Step 3: Run pilot commands with 5 seeds:
-  `uv run python cstr/run.py -e external_baselines --L 20 --H 15 --seeds 5`
-  `uv run python cstr/run.py -e external_baselines --L 20 --H 12 --seeds 5`
-- [ ] Step 4: Aggregate means/std and record whether continuous adaptive distillation must be rerun under the same continuous metric.
+- [x] Step 2: Run full focused test suite (62 passed).
+- [x] Step 3: Run pilot commands with 5 seeds for L20/H15 and L20/H12.
+- [x] Step 4: Aggregate means/std. PatchTST and TCN are far below Ridge/DLinear/GRU in physical MSE. Existing iterative distillation outputs bin-index MSE, so it still must be re-evaluated by continuous physical-value predictions before any head-to-head claim.
