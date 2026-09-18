@@ -27,6 +27,7 @@ import torch.optim as optim
 from .models import RNN, LSTMModel, RNNRegression, SeqRNN
 from .data import create_time_series_dataset, create_seq_dataset
 from .distillation import KL, KL_weighted, seq_KL, compute_weights
+from .continuous_eval import evaluate_classifier_as_continuous, fit_centroid_decoder
 
 
 # ==================== Device ====================
@@ -846,7 +847,10 @@ def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_b
     hidden, output, layers = 128, num_bins, 2
     ce = torch.nn.CrossEntropyLoss()
 
-    bin_edges, _, _ = compute_shared_bin_edges(data, L, num_bins)
+    bin_edges, y_min, y_max = compute_shared_bin_edges(data, L, num_bins)
+    centroid_decoder = fit_centroid_decoder(
+        data, L=L, H=H, bin_edges=bin_edges, y_min=y_min, y_max=y_max,
+        num_bins=num_bins, val_size=val_size, test_size=test_size)
     teacher_train, teacher_val, teacher_test, _, _ = create_time_series_dataset(
         data=data, lookback_window=L, forecasting_horizon=1, num_bins=num_bins,
         val_size=val_size, test_size=test_size, offset=H - 1, batch_size=batch_size, bin_edges=bin_edges)
@@ -883,6 +887,12 @@ def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_b
 
     teacher = _train_simple(RNN(L, hidden, output, layers).to(device), teacher_train, teacher_val)
     baseline = _train_simple(RNN(L, hidden, output, layers).to(device), student_train, student_val)
+    baseline_continuous_mse = evaluate_classifier_as_continuous(
+        baseline, data, L=L, H=H, bin_edges=bin_edges, y_min=y_min, y_max=y_max,
+        decoder=centroid_decoder, split="test", val_size=val_size, test_size=test_size)
+    baseline_bin_center_mse = evaluate_classifier_as_continuous(
+        baseline, data, L=L, H=H, bin_edges=bin_edges, y_min=y_min, y_max=y_max,
+        decoder="bin_center", split="test", val_size=val_size, test_size=test_size)
 
     # round-0 student: from scratch, uniform KL(标准 FGL)
     student_0 = RNN(L, hidden, output, layers).to(device)
@@ -948,11 +958,25 @@ def run_iterative_distillation(data, L=20, H=15, alpha=0.5, temperature=4, num_b
     results = {}
     for name, a in arms.items():
         s_mse = evaluate(a["student"], student_test, L)
+        student_continuous_mse = evaluate_classifier_as_continuous(
+            a["student"], data, L=L, H=H, bin_edges=bin_edges, y_min=y_min, y_max=y_max,
+            decoder=centroid_decoder, split="test", val_size=val_size, test_size=test_size)
+        student_bin_center_mse = evaluate_classifier_as_continuous(
+            a["student"], data, L=L, H=H, bin_edges=bin_edges, y_min=y_min, y_max=y_max,
+            decoder="bin_center", split="test", val_size=val_size, test_size=test_size)
         init_mse = arms["A_single"]["mse_curve_test"][0]  # round-0 test MSE
         fgl_delta = (baseline_mse - s_mse) / baseline_mse * 100 if baseline_mse > 0 else 0
         init_delta = (init_mse - s_mse) / init_mse * 100 if init_mse > 0 else 0
+        continuous_delta = ((baseline_continuous_mse - student_continuous_mse) /
+                            baseline_continuous_mse * 100
+                            if baseline_continuous_mse > 0 else 0)
         results[name] = {"teacher_mse": teacher_mse, "baseline_mse": baseline_mse,
                          "student_mse": s_mse, "fgl_delta": fgl_delta, "init_delta": init_delta,
+                         "baseline_continuous_mse": baseline_continuous_mse,
+                         "baseline_bin_center_mse": baseline_bin_center_mse,
+                         "student_continuous_mse": student_continuous_mse,
+                         "student_bin_center_mse": student_bin_center_mse,
+                         "continuous_delta": continuous_delta,
                          "rounds_used": a["rounds_used"], "total_epochs": a["total_epochs"],
                          "mse_curve_val": a["mse_curve_val"], "mse_curve_test": a["mse_curve_test"]}
         if verbose:

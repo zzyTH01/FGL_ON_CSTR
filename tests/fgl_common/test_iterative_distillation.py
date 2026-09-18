@@ -258,6 +258,7 @@ def test_compute_weights_E_soft_w_floor_param():
 
 
 # ==================== Task 1: 双权重分布重构 ====================
+import numpy as np
 import pytest as _pytest
 from fgl_common.training import _resolve_variants, _resolve_w_floor
 
@@ -326,3 +327,17 @@ def test_w_floors_override_reaches_arm_weights(tiny_loaders):
     w = _compute_arm_weights("E-soft", student, teacher, s["sf"], s["tf"],
                              s["indices"], s["L"], s["H"], w_floor=0.1)
     assert all(v >= 0.1 - 1e-6 for v in w.values())
+
+
+def test_iterative_distillation_returns_decoded_physical_metrics():
+    res = run_iterative_distillation(
+        _tiny_data(), L=20, H=15, num_bins=50, epochs=1, round_epochs=1,
+        batch_size=8, K=1, seed=1, verbose=False,
+        weight_distributions=("E",),
+    )
+    for arm in {"A_single", "A_iter", "E_single", "E_iter"}:
+        assert np.isfinite(res[arm]["student_continuous_mse"])
+        assert np.isfinite(res[arm]["student_bin_center_mse"])
+        assert res[arm]["student_continuous_mse"] >= 0.0
+    assert np.isfinite(res["A_single"]["baseline_continuous_mse"])
+    assert np.isfinite(res["A_single"]["baseline_bin_center_mse"])
