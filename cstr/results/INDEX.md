@@ -424,3 +424,17 @@
 - **数据口径**:直接预测 `y[t+L+H-1]`;按现有惯例做时序 train/val/test 切分;标准化仅用 train;MSE 反标准化为物理值
 - **基本类型**:每 `(dataset,L,H,method,seed)` 一行,列含 `val_mse,test_mse,n_test,epochs`
 - **读表指南**:按 method 聚合 `test_mse`;这是外部 baseline 结果,**不能与历史 bin-index MSE 直接混表**,也不能直接与未重评的 FGL/蒸馏结果混表
+
+### cstr_iterative_continuous_remap.csv
+- **实验归属**:把迭代自适应蒸馏的 argmax bin 预测重映射回物理值后,与连续 MSE 口径对齐
+- **产生程序**:`cstr/remap_compare.py`(入口 `cstr/run.py -e iterative_remap`)
+- **实验条件**:`data_h2o.pkl`,L20/H12 与 L20/H15,5 seeds;`epochs=30,round_epochs=15,K=5,α=0.5,T=4,bins=50`;变体 `E,E-soft`
+- **重映射方法**:主口径 `student_mse_centroid`=预测 bin → **训练集内该 bin 真实 y 的均值**;同时记录几何 bin center 与原 bin-index MSE。质心映射只用训练集目标,不用测试集
+- **基本类型**:每 `(dataset,L,H,seed,arm)` 一行;含原 bin-index、centroid、bin-center 三种 MSE
+- **读表指南**:与其他物理值方法比较时使用 `student_mse_centroid`;不要再用 `student_mse_bin_index` 直接比较
+
+### cstr_remap_vs_external_summary.csv
+- **实验归属**:重映射后的迭代蒸馏 vs 外部时序预测 baseline 的同物理值 MSE 汇总
+- **产生程序**:由 `cstr_iterative_continuous_remap.csv` 和 `cstr_external_baselines.csv` 聚合生成
+- **实验条件**:L20/H12 与 L20/H15;n=5;外部 baseline 的 Welch 检验以 `E_iter_remap` 为对照
+- **读表指南**:`ratio_vs_best_distill<1` 表示外部方法误差低于最佳蒸馏臂;`percent_better_than_best_distill>0` 表示更优
