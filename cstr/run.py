@@ -194,6 +194,13 @@ def run_external_baselines_exp(args):
     baselines_driver.run_all(args)
 
 
+def run_iterative_remap_exp(args):
+    """迭代蒸馏 bin-index 重映射为物理 MSE 并输出同口径结果;默认关闭。"""
+    sys.path.insert(0, _CSTR_DIR)
+    import remap_compare
+    remap_compare.run_all(args)
+
+
 def run_lh_sweep_exp(args):
     """对应 cstr/exp/fgl_cstr_lh_sweep.py:L×H 网格扫描(主线)。"""
     data = _load_data(args.dataset)
@@ -289,6 +296,8 @@ EXPERIMENTS = {
     "lh_sweep":        dict(fn=run_lh_sweep_exp,    enabled=True,  note="L×H 网格扫描(主线)"),
     "external_baselines": dict(fn=run_external_baselines_exp, enabled=False,
                               note="外部连续 MSE 基线;Ridge/DLinear/PatchTST/GRU/TCN"),
+    "iterative_remap": dict(fn=run_iterative_remap_exp, enabled=False,
+                            note="迭代蒸馏 bin-index→物理值 MSE 重映射;训练集质心为主口径"),
     "floor_sweep":      dict(fn=run_floor_sweep_exp, enabled=False, note="地板成因战役:τ=100 深挖 L×H,记录 baseline/teacher/E_iter 等地板量(H1-H4)"),
     "delayed_fgl":      dict(fn=run_delayed_fgl_exp, enabled=False, note="FGL on 延迟反馈数据集(周期→非周期);对应 run_fgl_delayed.py"),
     "delayed_iter":     dict(fn=run_delayed_iter_exp, enabled=False, note="E 变体迭代蒸馏 on 延迟数据集;对应 run_iterative_delayed.py"),
