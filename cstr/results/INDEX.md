@@ -438,3 +438,9 @@
 - **产生程序**:由 `cstr_iterative_continuous_remap.csv` 和 `cstr_external_baselines.csv` 聚合生成
 - **实验条件**:L20/H12 与 L20/H15;n=5;外部 baseline 的 Welch 检验以 `E_iter_remap` 为对照
 - **读表指南**:`ratio_vs_best_distill<1` 表示外部方法误差低于最佳蒸馏臂;`percent_better_than_best_distill>0` 表示更优
+
+#### cstr_remap_vs_external_L20_H12.png / cstr_remap_vs_external_L20_H15.png
+- **实验归属**:bin-index 重映射后的连续自适应蒸馏 vs 外部 baseline 物理值 MSE 对比
+- **产生程序**:由 `cstr_iterative_continuous_remap.csv` 与 `cstr_external_baselines.csv` 汇总绘图
+- **基本类型**:log-scale 柱状图,误差条为 5 seeds 标准差
+- **读图指南**:PatchTST/TCN 远低于蒸馏臂;FGL 内部蒸馏改善明显,但不能超过强外部 baseline
