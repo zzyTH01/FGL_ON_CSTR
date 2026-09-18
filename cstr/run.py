@@ -187,6 +187,13 @@ def run_iterative_distill_exp(args):
               f"Δinit={idt.mean():+.1f}%±{_sd(idt):.1f}  (n={len(sm)})")
 
 
+def run_external_baselines_exp(args):
+    """外部连续 MSE 基线(Ridge/DLinear/PatchTST/GRU/TCN);默认关闭。"""
+    sys.path.insert(0, _CSTR_DIR)
+    import baselines_driver
+    baselines_driver.run_all(args)
+
+
 def run_lh_sweep_exp(args):
     """对应 cstr/exp/fgl_cstr_lh_sweep.py:L×H 网格扫描(主线)。"""
     data = _load_data(args.dataset)
@@ -280,6 +287,8 @@ EXPERIMENTS = {
     "iterative_distill": dict(fn=run_iterative_distill_exp, enabled=True,
                               note="迭代自适应蒸馏(E 硬 / E-soft 稍软化,双权重分布);CSTR 已验证有效"),
     "lh_sweep":        dict(fn=run_lh_sweep_exp,    enabled=True,  note="L×H 网格扫描(主线)"),
+    "external_baselines": dict(fn=run_external_baselines_exp, enabled=False,
+                              note="外部连续 MSE 基线;Ridge/DLinear/PatchTST/GRU/TCN"),
     "floor_sweep":      dict(fn=run_floor_sweep_exp, enabled=False, note="地板成因战役:τ=100 深挖 L×H,记录 baseline/teacher/E_iter 等地板量(H1-H4)"),
     "delayed_fgl":      dict(fn=run_delayed_fgl_exp, enabled=False, note="FGL on 延迟反馈数据集(周期→非周期);对应 run_fgl_delayed.py"),
     "delayed_iter":     dict(fn=run_delayed_iter_exp, enabled=False, note="E 变体迭代蒸馏 on 延迟数据集;对应 run_iterative_delayed.py"),
@@ -314,6 +323,11 @@ def _add_common_args(p):
                    help="[iterative_distill] 权重分布变体,逗号分隔(如 E,E-soft)")
     p.add_argument("--w_floor", type=float, default=0.2,
                    help="[iterative_distill] E-soft 软地板(默认 0.2)")
+    p.add_argument("--baseline_methods", type=str,
+                   default="ridge,dlinear,patchtst,gru,tcn",
+                   help="[external_baselines] 逗号分隔方法")
+    p.add_argument("--baseline_epochs", type=int, default=50,
+                   help="[external_baselines] 深度基线最大 epoch")
     p.add_argument("--L_values", type=str, default=None, help="[lh_sweep] L 取值,逗号分隔")
     p.add_argument("--H_values", type=str, default=None, help="[lh_sweep] H 取值,逗号分隔")
 

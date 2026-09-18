@@ -287,6 +287,9 @@ def run_forecasting_baseline(data, method: str, lookback_window: int,
                              patience: int = 10, lr: float | None = None,
                              val_size: float = 0.2, test_size: float = 0.2) -> dict:
     """Train one deep baseline under the continuous forecasting contract."""
+    if method == "ridge":
+        return run_ridge_baseline(data, lookback_window, forecasting_horizon,
+                                  val_size=val_size, test_size=test_size)
     if method not in MODEL_BUILDERS:
         raise ValueError(f"unknown method {method!r}; expected one of {sorted(MODEL_BUILDERS)}")
     if epochs < 1:
