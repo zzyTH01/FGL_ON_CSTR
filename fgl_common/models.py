@@ -101,3 +101,27 @@ class SeqRNN(nn.Module):
         out = F.relu(self.fc1(out))
         out = self.fc2(out)              # (batch, output_steps * num_bins)
         return out.view(-1, self.output_steps, self.num_bins)
+
+
+class RNNGaussian(nn.Module):
+    """RNN that outputs a Gaussian distribution N(μ, σ²) per sample.
+
+    Returns ``(mu, log_sigma)``, both shaped ``(batch,)``.
+    Used for continuous-value FGL without discretization (Plan B).
+    """
+
+    def __init__(self, input_size, hidden_size=128, num_layers=2):
+        super().__init__()
+        self.rnn = nn.RNN(input_size, hidden_size, num_layers,
+                          batch_first=True,
+                          dropout=0.2 if num_layers > 1 else 0.0)
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, 2)  # (mu, log_sigma)
+
+    def forward(self, x):
+        h0 = torch.zeros(self.rnn.num_layers, x.size(0),
+                         self.rnn.hidden_size).to(x.device)
+        out, _ = self.rnn(x, h0)
+        out = F.relu(self.fc1(out[:, -1, :]))
+        params = self.fc2(out)
+        return params[:, 0], params[:, 1]   # mu, log_sigma

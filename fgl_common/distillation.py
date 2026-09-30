@@ -143,3 +143,60 @@ def compute_weights(variant, student_errors, teacher_errors, student_train_indic
 
     weights = {idx: float(normalized[i]) for i, idx in enumerate(student_train_indices)}
     return weights, raw, normalized
+
+
+# ==================== Gaussian distribution distillation ====================
+
+import math
+import torch
+
+
+def gaussian_nll(mu: torch.Tensor, log_sigma: torch.Tensor,
+                 targets: torch.Tensor) -> torch.Tensor:
+    """Gaussian negative log-likelihood.
+
+    Each model output is a Gaussian ``N(mu, exp(log_sigma)^2)``; the task loss
+    is the mean NLL over the batch.
+
+    Args:
+        mu: ``(batch,)`` predicted mean.
+        log_sigma: ``(batch,)`` predicted log standard deviation.
+        targets: ``(batch,)`` true physical values.
+
+    Returns:
+        Scalar loss.
+    """
+    sigma = torch.exp(log_sigma.clamp(-10, 5))
+    return (0.5 * ((targets - mu) ** 2 / sigma ** 2 + 2 * log_sigma
+                   + math.log(2 * math.pi))).mean()
+
+
+def gaussian_kl(mu_t: torch.Tensor, log_sigma_t: torch.Tensor,
+                mu_s: torch.Tensor, log_sigma_s: torch.Tensor,
+                temperature: float = 1.0,
+                alpha: float = 0.5) -> torch.Tensor:
+    """``(1-α)·T²·KL( N(μ_t, T·σ_t²) ‖ N(μ_s, σ_s²) )``.
+
+    Temperature scales the **teacher's** variance (σ_t² → T·σ_t²), analogous
+    to dividing classification logits by T: higher T makes the teacher's
+    distribution softer / more spread out, transferring more "dark knowledge".
+
+    Closed form for univariate Gaussians::
+
+        KL = log(σ_s / (√T·σ_t)) + (T·σ_t² + (μ_t - μ_s)²) / (2·σ_s²) - 1/2
+
+    Args:
+        mu_t / log_sigma_t: teacher predicted mean / log-std.
+        mu_s / log_sigma_s: student predicted mean / log-std.
+        temperature: softening factor (default 1 = no softening).
+        alpha: CE/NLL weight; the returned value is multiplied by (1-α).
+
+    Returns:
+        Scalar distillation loss contribution.
+    """
+    sigma_t = torch.exp(log_sigma_t.clamp(-10, 5)) * math.sqrt(temperature)
+    sigma_s = torch.exp(log_sigma_s.clamp(-10, 5))
+    kl = (torch.log(sigma_s / sigma_t)
+          + (sigma_t ** 2 + (mu_t - mu_s) ** 2) / (2 * sigma_s ** 2)
+          - 0.5)
+    return (1.0 - alpha) * (temperature ** 2) * kl.mean()

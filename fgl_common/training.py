@@ -18,6 +18,7 @@
 import os
 from collections import deque
 import copy
+import math
 
 import numpy as np
 import torch
@@ -1220,3 +1221,155 @@ def run_seq2seq(data, student_horizon=72, teacher_steps=10, alpha=0.5, num_bins=
         print(f"  Student (H={H}):  {s_mse:.4f}  (Δ={improvement:+.1f}%)")
     return {"horizon": H, "teacher_steps": K, "teacher": t_mse,
             "baseline": b_mse, "student": s_mse, "improvement": improvement}
+
+
+# ==================== Gaussian distribution FGL (Plan B) ====================
+
+def run_fgl_gaussian(
+    data,
+    lookback_window: int,
+    forecasting_horizon: int,
+    alpha: float = 0.5,
+    temperature: float = 4.0,
+    val_size: float = 0.2,
+    test_size: float = 0.2,
+    epochs: int = 30,
+    batch_size: int = 64,
+    patience: int = 5,
+    lr: float = 1e-4,
+    hidden: int = 128,
+    num_layers: int = 2,
+    seed: int = 42,
+    verbose: bool = True,
+    label: str = "",
+):
+    """FGL with Gaussian distribution distillation (Plan B, no discretization).
+
+    Same 3-stage pipeline as ``run_fgl_experiment`` but:
+    - Inputs and targets remain **continuous physical values** (no binning).
+    - Model outputs ``(μ, log σ)`` per sample → Gaussian N(μ, σ²).
+    - Task loss: Gaussian NLL.
+    - Distillation loss: closed-form KL between teacher and student Gaussians,
+      with temperature scaling on the teacher's variance.
+
+    Returns dict with bin-free physical MSE for teacher / baseline / student,
+    plus RMSE and improvement.
+    """
+    from fgl_common.models import RNNGaussian
+    from fgl_common.distillation import gaussian_nll, gaussian_kl
+
+    torch.manual_seed(seed)
+    L, H = lookback_window, forecasting_horizon
+    tag = f"[{label}] " if label else ""
+
+    # ---- continuous datasets (MSE=True → no discretization) ----
+    teacher_train, teacher_val, teacher_test, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=1,
+        num_bins=50, val_size=val_size, test_size=test_size,
+        offset=H - 1, batch_size=batch_size, MSE=True,
+    )
+    student_train, student_val, student_test, _, _ = create_time_series_dataset(
+        data=data, lookback_window=L, forecasting_horizon=H,
+        num_bins=50, val_size=val_size, test_size=test_size,
+        offset=0, batch_size=batch_size, MSE=True,
+    )
+
+    if verbose:
+        print(f"\n{'=' * 50}")
+        print(f"{tag}Gaussian FGL  H={H:2d}  α={alpha:.2f}  T={temperature:.1f}  "
+              f"Epochs={epochs}  Lookback={L}  [RNNGaussian]")
+        print(f"{'=' * 50}")
+
+    mk = lambda: RNNGaussian(L, hidden, num_layers).to(device)
+
+    def _forward_loss(model, x, y):
+        mu, log_sigma = model(x)
+        return gaussian_nll(mu, log_sigma, y)
+
+    def _to_y(y):
+        return y.float().to(device)
+
+    def _train_model(model_fn, train_loader, val_loader, desc=""):
+        model = model_fn()
+        opt = optim.Adam(model.parameters(), lr=lr)
+        stop = EarlyStopper(patience=patience)
+        for epoch in range(epochs):
+            model.train()
+            for _, x, y in train_loader:
+                x = x.float().to(device).view(-1, 1, L)
+                y = _to_y(y)
+                opt.zero_grad()
+                _forward_loss(model, x, y).backward()
+                opt.step()
+            model.eval()
+            with torch.no_grad():
+                vl = sum(_forward_loss(model, x.float().to(device).view(-1, 1, L), _to_y(y)).item()
+                         for _, x, y in val_loader) / max(len(val_loader), 1)
+            if stop.step(vl, model):
+                break
+        stop.restore(model)
+        return model
+
+    # ---- teacher (1-step, offset=H-1) ----
+    teacher = _train_model(mk, teacher_train, teacher_val, "teacher")
+
+    # ---- baseline (H-step, no teacher) ----
+    baseline = _train_model(mk, student_train, student_val, "baseline")
+
+    # ---- student (H-step + Gaussian distillation) ----
+    student = mk()
+    opt_s = optim.Adam(student.parameters(), lr=lr)
+    stop_s = EarlyStopper(patience=patience)
+    for epoch in range(epochs):
+        student.train()
+        for (_, x_s, y_s), (_, x_t, _) in zip(student_train, teacher_train):
+            x_s = x_s.float().to(device).view(-1, 1, L)
+            targets = _to_y(y_s)
+            mu_s, ls_s = student(x_s)
+            x_t = x_t.float().to(device).view(-1, 1, L)
+            with torch.no_grad():
+                mu_t, ls_t = teacher(x_t)
+            task_loss = gaussian_nll(mu_s, ls_s, targets)
+            distill_loss = gaussian_kl(mu_t, ls_t, mu_s, ls_s,
+                                       temperature=temperature, alpha=alpha)
+            loss = task_loss + distill_loss
+            opt_s.zero_grad()
+            loss.backward()
+            opt_s.step()
+        student.eval()
+        with torch.no_grad():
+            vl = sum(_forward_loss(student, x.float().to(device).view(-1, 1, L), _to_y(y)).item()
+                     for _, x, y in student_val) / max(len(student_val), 1)
+        if stop_s.step(vl, student):
+            break
+    stop_s.restore(student)
+
+    # ---- evaluation: physical MSE of predicted μ vs true value ----
+    def _eval_mse(model, loader):
+        model.eval()
+        total = 0.0
+        with torch.no_grad():
+            for _, x, y in loader:
+                x = x.float().to(device).view(-1, 1, L)
+                mu, _ = model(x)
+                total += nn.functional.mse_loss(mu.cpu(), y.float()).item()
+        return total / max(len(loader), 1)
+
+    teacher_mse = _eval_mse(teacher, teacher_test)
+    baseline_mse = _eval_mse(baseline, student_test)
+    student_mse = _eval_mse(student, student_test)
+    improvement = ((baseline_mse - student_mse) / baseline_mse * 100
+                   if baseline_mse > 0 else 0.0)
+
+    if verbose:
+        print(f"{tag}teacher MSE={teacher_mse:.6f}  baseline MSE={baseline_mse:.6f}  "
+              f"student MSE={student_mse:.6f}  improvement={improvement:+.1f}%")
+
+    return {
+        "lookback": L, "horizon": H, "alpha": alpha, "temperature": temperature,
+        "teacher": teacher_mse, "baseline": baseline_mse,
+        "student": student_mse, "improvement": improvement,
+        "teacher_rmse": math.sqrt(teacher_mse),
+        "baseline_rmse": math.sqrt(baseline_mse),
+        "student_rmse": math.sqrt(student_mse),
+    }
