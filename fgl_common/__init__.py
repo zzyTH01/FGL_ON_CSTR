@@ -28,11 +28,12 @@ from .training import (
     compute_per_sample_mse,
     run_fgl_experiment, run_iterative_distillation, run_adaptive_weight, run_adaptive_inference, run_seq2seq, run_baseline_converged,
 )
+from .patchtst_fgl import build_continuous_fgl_windows, run_patchtst_fgl
 from .sweep import run_lh_sweep
 
 __all__ = [
     # models
-    "RNN", "LSTMModel", "RNNRegression", "SeqRNN",
+    "RNN", "LSTMModel", "RNNRegression", "SeqRNN", "PatchTST",
     # data
     "create_time_series_dataset", "create_seq_dataset",
     # distillation
@@ -43,6 +44,8 @@ __all__ = [
     "page_hinkley_update", "compute_shared_bin_edges", "compute_per_sample_errors",
     "compute_per_sample_mse",
     "run_fgl_experiment", "run_iterative_distillation", "run_adaptive_weight", "run_adaptive_inference", "run_seq2seq", "run_baseline_converged",
+    # continuous external baselines / PatchTST FGL
+    "build_continuous_fgl_windows", "run_patchtst_fgl",
     # sweep
     "run_lh_sweep",
 ]

@@ -8,12 +8,13 @@ forward and therefore solves a one-step task for the same target.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from .baselines import PatchTST
-from .training import device
+from .training import EarlyStopper, device
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,10 @@ class ContinuousFGLWindows:
     y_std: float
 
 
-def build_continuous_fgl_windows(data, lookback_window: int, forecasting_horizon: int,
+PatchTSTFGLResult = dict[str, int | float]
+
+
+def build_continuous_fgl_windows(data: np.ndarray | Sequence[tuple[float, float]], lookback_window: int, forecasting_horizon: int,
                                  val_size: float = 0.2, test_size: float = 0.2,
                                  ) -> ContinuousFGLWindows:
     """Build aligned student/teacher windows with train-only scaling."""
@@ -102,7 +106,7 @@ def build_continuous_fgl_windows(data, lookback_window: int, forecasting_horizon
     )
 
 
-def _output(model: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+def _output(model: torch.nn.Module, x: torch.Tensor) -> torch.Tensor:
     pred = model(x.to(device))
     return pred.squeeze(-1) if pred.ndim > 1 else pred
 
@@ -120,11 +124,9 @@ def _evaluate(model, x: torch.Tensor, y: torch.Tensor, y_std: float) -> float:
 def _train_model(model, train_x: torch.Tensor, train_y: torch.Tensor,
                  val_x: torch.Tensor, val_y: torch.Tensor, *, epochs: int,
                  batch_size: int, patience: int, lr: float, seed: int,
-                 teacher_x: torch.Tensor | None = None, teacher: torch.Tensor | None = None,
-                 alpha: float = 1.0):
+                 teacher_x: torch.Tensor | None = None, teacher: torch.nn.Module | None = None,
+                 alpha: float = 1.0) -> dict[str, int | float]:
     """Train one continuous regression arm and restore its best val state."""
-    from .training import EarlyStopper
-
     generator = torch.Generator().manual_seed(seed)
     if teacher_x is None:
         teacher_x = train_x
@@ -170,7 +172,7 @@ def run_patchtst_fgl(data, lookback_window: int, forecasting_horizon: int,
                      epochs: int = 50, batch_size: int = 64, patience: int = 10,
                      lr: float = 5e-4, seed: int = 42, d_model: int = 32, nhead: int = 4,
                      dim_feedforward: int = 64, dropout: float = 0.1,
-                     verbose: bool = False, label: str = "") -> dict:
+                     verbose: bool = False, label: str = "") -> PatchTSTFGLResult:
     """Run teacher -> baseline -> student FGL with continuous PatchTST arms."""
     torch.manual_seed(seed)
     np.random.seed(seed)

@@ -22,6 +22,8 @@ All three regression domains (cstr / mackey_glass / lorenz) share one library �
 - **`data.py`** — `create_time_series_dataset(data, lookback_window, forecasting_horizon, num_bins, val_size, test_size, offset=0, MSE=False, batch_size=1, bin_edges=None)` — sliding-window + discretization + DataLoaders. The `offset` param shifts indices to align teacher/student streams. Also `create_seq_dataset` (multi-step targets).
 - **`distillation.py`** — `KL(student_logits, teacher_logits, temperature, alpha)` = `(1-α)·T²·KL(softmax(teacher/T)‖log_softmax(student/T))`; plus `KL_weighted`, `seq_KL`, `compute_weights`.
 - **`training.py`** — `device`, `EarlyStopper`, `evaluate*` (classification/regression/seq, optional Page-Hinkley drift retrain), and the **unified** `run_fgl_experiment(data, lookback_window, forecasting_horizon, model_fn=RNN, alpha, temperature, num_bins, epochs, regression=False, use_ph=False, ...)` — the 3-stage teacher→baseline→student loop. Variant differences collapse into parameters (`model_fn` / `regression` / `use_ph`). Also `run_iterative_distillation` (continuous adaptive distillation, dual weight distributions: `E` hard zero-floor / `E-soft` slightly-softened sigmoid, via `weight_distributions` list → `{v}_single`/`{v}_iter` arms + shared `A_single`/`A_iter` controls; `variant` kept as backward-compatible alias; `w_floors` per-variant floor override), `run_adaptive_weight`, `run_adaptive_inference`, `run_seq2seq`.
+- **`baselines.py`** — continuous direct-horizon baselines (`Ridge`, `DLinear`, `PatchTST`, `GRU`, `TCN`) with train-only standardization and physical-unit MSE.
+- **`patchtst_fgl.py`** — continuous PatchTST teacher/baseline/student FGL on the same direct-horizon contract; `build_continuous_fgl_windows` aligns the shifted teacher window and applies train-only scaling.
 - **`sweep.py`** — `run_lh_sweep(run_fn, data, L_values, H_values, seeds, outdir, ...)` — generic L×H grid sweep with CSV + heatmap + report.
 
 `mackey_glass/utils/utils.py` **re-exports** `RNN`/`KL`/`create_time_series_dataset` from `fgl_common` (and keeps the MG-specific `MackeyGlass` jitcdde dataset class), so old `from utils.utils import ...` imports still work.
@@ -36,7 +38,7 @@ python cstr/run.py -e baseline,lh_sweep  # run specific ones
 python cstr/run.py --list                # list all + switch state + notes
 ```
 
-- **`cstr/run.py`** — baseline / lstm / regression / seq2seq / adaptive / adaptive_weight / **lh_sweep** / **iterative_distill** / floor_sweep / delayed_fgl / delayed_iter / iter_grid / adaptive_grid / lyapunov (enabled: baseline, lh_sweep, iterative_distill; everything else off). Non-mainline CSTR optimizations default off. (`adaptive_weight` variant E — amplified teacher−student MSE-gap weighting — is verified effective on CSTR; see `conclusion/`. `iterative_distill` runs both `E`/`E-soft` weight distributions via `--distill_variants`; CSV → `cstr/results/iterative_distill.csv`. Off-by-default experiments wrap driver modules kept in `cstr/` root — `run_fgl_delayed.py`, `run_iterative_delayed.py`, `sweep_iterative.py`, `sweep_adaptive.py`, `lyapunov_delayed.py`, `run_floor_sweep.py` — each exposing a `run_all(args)`/API entry the EXPERIMENTS fn calls.)
+- **`cstr/run.py`** — baseline / lstm / regression / seq2seq / adaptive / adaptive_weight / **lh_sweep** / **iterative_distill** / external_baselines / patchtst_fgl / floor_sweep / delayed_fgl / delayed_iter / iter_grid / adaptive_grid / lyapunov (enabled: baseline, lh_sweep, iterative_distill; everything else off). Non-mainline CSTR optimizations default off. (`adaptive_weight` variant E — amplified teacher−student MSE-gap weighting — is verified effective on CSTR; see `conclusion/`. `iterative_distill` runs both `E`/`E-soft` weight distributions via `--distill_variants`; CSV → `cstr/results/iterative_distill.csv`. Off-by-default experiments wrap driver modules kept in `cstr/` root — `baselines_driver.py`, `remap_compare.py`, `run_fgl_delayed.py`, `run_iterative_delayed.py`, `run_patchtst_fgl_driver.py`, `sweep_iterative.py`, `sweep_adaptive.py`, `lyapunov_delayed.py`, `run_floor_sweep.py` — each exposing a `run_all(args)`/API entry the EXPERIMENTS fn calls.)
 - **`mackey_glass/run.py`** — base / drift / **lh_sweep** / tau_sweep / l_threshold / h_threshold / geometry / iterative_distill (enabled: base, lh_sweep; iterative_distill stays **off** — MG negative result, CLI/CSV ready). Threshold/geometry tests verify the L+H-1≥τ formula.
 - **`lorenz/run.py`** — **generate** (ρ sweep) / **lh_sweep** (ρ=60 strong chaos).
 
@@ -73,7 +75,7 @@ cstr/  mackey_glass/  lorenz/
 ├── results/          # sweep CSVs (+ plots/ for PNGs, logs/ for run logs)
 ├── archive/          # old single-purpose scripts (traceability)
 └── (mackey_glass only) utils/utils.py  # re-export fgl_common + MackeyGlass class
-fgl_common/           # shared library (models/data/distillation/training/sweep)
+fgl_common/           # shared library (models/data/distillation/training/baselines/patchtst_fgl/sweep)
 conclusion/           # research summaries + experiment report MDs (研究进展报告.md = latest; archive/ for superseded)
 docs/                 # references: paper PDF, Cantera notebook, notes
 ```

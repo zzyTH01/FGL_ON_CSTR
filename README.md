@@ -1,94 +1,188 @@
 # A Predictive Approach to Enhance Time-Series Forecasting
 
 [![Paper](https://img.shields.io/badge/paper-nature_communications-B31B1B.svg)](https://doi.org/10.1038/s41467-025-63786-4)
-[![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.1.1-ee4c2c.svg)](https://pytorch.org/)
+[![Tests](https://img.shields.io/badge/tests-86%20passed-brightgreen.svg)](#testing)
 
-This repository is a research study of **Future-Guided Learning (FGL)** (Nature Communications 2025, Gunasekaran et al.). FGL enhances time-series forecasting via teacher–student knowledge distillation: a **teacher** model sees near-future data, a **student** model predicts the far future, and the teacher's insight is distilled into the student by minimizing the discrepancy between their probability distributions.
+This repository is a research study of **Future-Guided Learning (FGL)**, based on the Nature Communications 2025 paper by Gunasekaran et al. FGL is a teacher–student forecasting framework: a **teacher** sees near-future data through a short-horizon task, while a **student** predicts farther future data. During student training, the teacher's output distribution is distilled into the student with a KL loss.
 
-This fork focuses on **three regression / nonlinear-dynamical-system domains** — Mackey-Glass, CSTR, and Lorenz-63 — and studies *when and why* FGL helps. The original EEG (AES / CHB-MIT) experiments are **not part of this study and have been removed**. The latest research report (for presentation) is [`conclusion/研究进展报告.md`](conclusion/研究进展报告.md); the most complete synthesis is [`conclusion/项目汇报总结.md`](conclusion/项目汇报总结.md), and the earlier three-system conclusions are in [`conclusion/final_conclusions.md`](conclusion/final_conclusions.md).
+This fork studies **when and why FGL helps** on three regression / nonlinear dynamical systems:
 
----
+- **Mackey–Glass** (delay DDE, τ = 13)
+- **CSTR** (H₂/O₂ reactor and delayed-feedback chaotic variants)
+- **Lorenz-63** (ρ = 60 strong chaos)
 
-## Key finding
+The original EEG experiments (AES / CHB-MIT) are outside this study's scope and have been removed.
 
-Across the three dynamical systems FGL reliably helps, but the **size and robustness of the gain differ sharply**. Those differences *correlate* with system dynamics, yet are **not established as causal**.
+## Latest research status: October 2026
 
-**Robust, repeatable conclusions:**
+The August reports remain the consolidated multi-system synthesis. The newest result adds a continuous direct-horizon PatchTST pathway and corrects physical-unit rescaling for continuous external baselines; see [`conclusion/conclusion_1008.md`](conclusion/conclusion_1008.md) and [`conclusion/patchtst_fgl_report.md`](conclusion/patchtst_fgl_report.md).
 
-* **L (lookback) and H (horizon) dominate.** Whether FGL lands in the "effective" or "failed" region is set by the (L, H) configuration; α and temperature only fine-tune *inside* an already-chosen region (the L×H span reaches ~220 pp on CSTR, vs. ~10–15 pp for an α×T grid at fixed L,H).
-* **A threshold effect (MG).** When the joint information window exceeds the system's intrinsic memory / delay scale τ — `L + (H−1) > τ` — the teacher's exclusive near-future information vanishes and FGL turns negative. Verified cleanly when sweeping L at fixed H (L=9→10: baseline MSE drops 8.5×, FGL Δ flips from +78.5% to −15.7%).
-* **A baseline floor (CSTR).** When the baseline is too easy (MSE collapses to a ~14.1 discretization-noise floor), the teacher's 1-step target misaligns with the student's H-step target and distillation turns harmful.
-* **Teacher–student information asymmetry is the proximal mechanism.** FGL works when the teacher, via its `offset = H−1` time shift, sees near-future information the student cannot recover from its history window alone.
+### 2026-10-08 continuous PatchTST update
 
-**Per-domain best gains** (overall best, multi-seed):
+- Added `fgl_common.patchtst_fgl.run_patchtst_fgl`: a continuous teacher→baseline→student pipeline using the same direct-horizon contract as the external baselines.
+- Fixed the deep-baseline physical MSE conversion: normalized MSE is now multiplied by `y_std²` exactly once.
+- On CSTR H₂O (`L=20`, 5 seeds), corrected PatchTST reaches `1.98e-3` MSE at H12 and `1.41e-3` at H15.
+- PatchTST-FGL improves over the best historical RNN-FGL arm by **77.0%** (H12) and **80.1%** (H15), but does not beat the same-backbone PatchTST baseline at `α=0.5`.
 
-| System | Dynamics | Best FGL Δ | Positive configs | Notes |
-|--------|----------|:---------:|:----------------:|-------|
-| **CSTR** (H₂O) | period-1 limit cycle | **+25.7%** (L=20,H=12) | 24% (6/25) | hard to find — only +11.6% inside the coarse L×H sweep |
-| **Mackey-Glass τ=13** | period-doubling | **+78.5%** (L=9,H=5) | 60% (15/25) | strongest gain |
-| **Lorenz-63 ρ=60** | strong chaos | **+62.2%** (L=8,H=5) | 96% (24/25) | most robust — no tuning needed |
+The current conclusions refine the earlier "FGL helps or fails" story into a set of regime-dependent mechanisms. The latest consolidated report is [`conclusion/研究进展报告.md`](conclusion/研究进展报告.md); the most complete synthesis is [`conclusion/项目汇报总结.md`](conclusion/项目汇报总结.md). The August 21 aperiodic-CSTR and iterative-distillation findings are summarized in [`conclusion/进展0821.md`](conclusion/进展0821.md), with the convergence-speed analysis in [`conclusion/iterative_convergence_speed.md`](conclusion/iterative_convergence_speed.md).
 
-> **Note on the "number of feedback loops" hypothesis.** An earlier framing of this work held that FGL effectiveness *scales with the number of feedback loops* in the system (CSTR = 1, MG = 2, Lorenz = ∞). We now treat this as an **exploratory, correlational hypothesis rather than a causal conclusion**. The three systems' Δ ordering is consistent with it, but (1) there is no causal-intervention experiment, and (2) alternative explanations — predictability differences, degree of teacher–student information asymmetry — fit the same data equally well (all three systems show a positive baseline-MSE ↔ FGL-Δ correlation). It is offered as one possible reference direction, pending verification on more systems. See [`conclusion/项目汇报总结.md`](conclusion/项目汇报总结.md) §6.3 and §7.2 for the full discussion.
+### Established findings
+
+1. **Lookback `L` and horizon `H` dominate.** Across systems, the `(L, H)` configuration determines whether FGL lands in an effective or harmful region. α and temperature mainly fine-tune within that region. For example, the CSTR L×H grid spans about 220 percentage points in FGL Δ, whereas α×T grids at fixed `(L, H)` change results by roughly 10–15 points.
+2. **Teacher–student information asymmetry is the direct mechanism.** The teacher's `offset = H−1` gives it access to near-future information that the student cannot recover from its own history window. FGL is useful only while this exclusive information remains meaningful.
+3. **Mackey–Glass threshold effect.** With fixed `H` and varying `L`, the condition `L + H − 1 ≥ τ` cleanly marks the transition. At τ = 13 and H = 5, moving from L = 9 to L = 10 drops baseline MSE by about 8.5× and flips FGL from **+78.5%** to **−15.7%**. The formula should not be treated as universally causal: on delayed chaotic CSTR, the equivalent sharp phase transition is falsified.
+4. **CSTR baseline floor.** When the baseline reaches a discretization/data floor, one-shot distillation becomes harmful. Deep L×H experiments show that this floor is governed by `(L, H)`, data predictability, and whether iterative distillation is used. The multivariate floor model reaches **R² = 0.72**.
+5. **Iterative/adaptive distillation is regime-dependent.**
+   - Variant **E** uses a zero-floor amplified teacher−student MSE-gap weight. On standard CSTR, a 5×5 grid has 47/50 cell×seed wins over the uniform control, and the L20H15 five-seed anchor gives a +33.2% E-vs-A initial-round improvement (paired p = 0.018).
+   - **E-iter** is bimodal: it can substantially accelerate or improve the floor in informative regimes, but collapses when the gap dries up or becomes noisy. Therefore **A-iter remains the safer robust default**, while E-iter is preferable in selected difficult CSTR regimes.
+   - On Mackey–Glass, adaptive iterative distillation remains a negative result.
+6. **Delayed-feedback chaotic CSTR is a validated stress test.** The stable delayed-feedback generator produces 13 datasets across τ ∈ [30, 150]. Their Rosenstein Lyapunov exponents are all positive, confirming genuine chaos rather than noise. Periodicity and Lyapunov exponent behave as separate dimensions.
+7. **The "number of feedback loops" hypothesis is exploratory only.** The old ordering—CSTR = 1, Mackey–Glass = 2, Lorenz = ∞—is at best correlational. It lacks causal intervention, has few systems, and competing explanations such as task difficulty and information asymmetry fit the same data. Do not cite it as a causal mechanism.
+
+### Best one-shot FGL gains
+
+“Positive configs” counts the L×H grid cells with positive mean FGL improvement. The values below summarize the best multi-seed one-shot configurations; iterative distillation results are discussed separately above.
+
+| System | Dynamics | Best one-shot FGL Δ | Positive configs | Notes |
+|---|---|---:|---:|---|
+| CSTR (H₂O, periodic) | Period-1 limit cycle | **+25.7%** (L=20, H=12) | 36% (9/25) | Low ceiling; requires careful `(L, H)` selection |
+| Mackey–Glass τ=13 | Period-doubling region | **+78.5%** (L=9, H=5) | 56% (14/25) | Largest one-shot gain |
+| Lorenz-63 ρ=60 | Strong chaos | **+62.2%** (L=8, H=5) | 96% (24/25) | Most robust; positive across nearly all cells |
 
 ![Overview of FGL](fig3.png)
+
 <details>
 <summary><b>Figure 3: Overview of FGL and its applications. (Click to expand)</b></summary>
 <b>A</b> In the FGL framework, a teacher model operates in the relative future of a student model that focuses on long-term forecasting. After training the teacher on its future-oriented task, both models perform inference during the student’s training phase. The probability distributions from the teacher and student are extracted, and a loss is computed based on Eq. (1). <b>A1</b> Knowledge distillation transfers information via the Kullback–Leibler (KL) divergence between class distributions. <b>C</b> In a regression forecasting scenario, the teacher and student perform short-term and long-term forecasting, respectively. The student gains insights from the teacher during training, enhancing its ability to predict further into the future.
 </details>
 
----
+## Repository design
 
-## 1. Setup
+```text
+fgl_common/          Shared library: models, data windows/discretization,
+                     KL/distillation loops, continuous external baselines,
+                     PatchTST-FGL, and sweep utilities
+cstr/                CSTR entry point, data generators, experiments, results
+mackey_glass/        Mackey–Glass entry point and jitcdde data utilities
+lorenz/              Lorenz-63 entry point and experiments
+conclusion/          Consolidated research reports; archive/ stores older reports
+docs/                Paper/reference material and implementation design notes
+tests/               Pytest suite for shared and CSTR-specific behavior
+```
 
-Python 3.11 + `uv` (a `.venv/` lives at the repo root).
+### Unified three-stage pipeline
+
+`fgl_common.training.run_fgl_experiment` implements the core workflow:
+
+1. **Teacher:** train on a one-step task with `offset = H−1`.
+2. **Baseline:** train a student on the H-step task without distillation.
+3. **FGL student:** train the same H-step student with KL distillation from the frozen teacher.
+
+The teacher and student share discretization bin edges so their output distributions are comparable. `run_iterative_distillation` extends this with single/iterative arms and A/E/E-soft weighting variants; `run_baseline_converged` supports the floor-study baseline.
+
+For the continuous external-baseline contract, `fgl_common.baselines` provides Ridge/DLinear/PatchTST/GRU/TCN. `fgl_common.patchtst_fgl.run_patchtst_fgl` reuses the PatchTST idea for a continuous teacher→baseline→student experiment: the student predicts `y[t+L+H-1]`, while the teacher sees a window shifted `H−1` steps forward and distills toward the same target.
+
+## Setup
+
+Python 3.11 and [`uv`](https://docs.astral.sh/uv/) are recommended.
 
 ```bash
-uv sync          # or: pip install -r requirements.txt
+uv sync
+# or
+python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 ```
 
-**Running on another machine.** Device selection (`CUDA → MPS → CPU`) is automatic. `torch` is declared without a CUDA suffix (`==2.1.1`, not `+cu121`), so the same `uv sync` / `pip install -r requirements.txt` works across platforms — Mac (MPS or CPU), Linux NVIDIA GPUs (CUDA is bundled in the default Linux wheel, no extra index needed), and CPU-only machines. To force a device, e.g. drop to CPU when an op isn't supported on MPS:
+Device selection follows `CUDA → MPS → CPU`. Set `FGL_DEVICE=cpu` to force CPU if an operator is unavailable on MPS. The selected device is printed as `[fgl] device = ...`.
+
+## Domains and data
+
+| Domain | Directory | Data source | Default benchmark |
+|---|---|---|---|
+| Mackey–Glass | `mackey_glass/` | Generated on the fly with `jitcdde`; τ=13 snapshot in `mackey_glass/data/` | τ = 13 |
+| CSTR | `cstr/` | Cantera generators write to `cstr/data/` | Periodic H₂/O₂ data; delayed chaotic τ sweep |
+| Lorenz-63 | `lorenz/` | Generated on the fly with `scipy.integrate.solve_ivp` | ρ = 60 strong chaos |
+
+Every `data/` and `results/` directory contains an `INDEX.md` describing file provenance, experiment attribution, conditions, and reading order. Sweep outputs use `results/*.csv`, plots use `results/plots/*.png`, and logs use `results/logs/*`.
+
+CSTR data generation requires **Cantera >= 3.2.0**. The active delayed-chaos generator is `cstr/generate_delayed_stable.py`.
+
+## Running experiments
+
+Each domain has one `run.py` with an `EXPERIMENTS` switch dictionary. Without `-e`, all enabled experiments run; `--list` shows their state.
 
 ```bash
-FGL_DEVICE=cpu uv run python cstr/run.py -e baseline   # bash/zsh; fish: `set -x FGL_DEVICE cpu`; Windows cmd: `set FGL_DEVICE=cpu &&`
+uv run python cstr/run.py --list
+uv run python cstr/run.py                     # baseline + L×H sweep + iterative distillation
+uv run python mackey_glass/run.py --list
+uv run python mackey_glass/run.py -e lh_sweep
+uv run python lorenz/run.py -e generate --sweep
+uv run python lorenz/run.py -e lh_sweep
 ```
 
-The selected device is printed at startup as `[fgl] device = ...`.
-
-## 2. Domains & data
-
-| Domain | Directory | System | Data |
-|--------|-----------|--------|------|
-| Mackey-Glass | `mackey_glass/` | delay-DDE chaotic (τ=13) | generated on-the-fly via `jitcdde` |
-| CSTR | `cstr/` | H₂/O₂ reactor (periodic oscillation) | `cstr/generate*.py` (Cantera) → `cstr/data/` |
-| Lorenz-63 | `lorenz/` | 3D ODE chaotic (ρ=60) | generated on-the-fly via `scipy.integrate` |
-
-All three share one library — **`fgl_common/`** (RNN model, KL distillation, sliding-window discretization, the 3-stage teacher→baseline→student training loop, and an L×H sweep helper).
-
-> **Finding past experiment outputs.** Every `data/` and `results/` directory contains an `INDEX.md` documenting each file's experiment attribution, generating program, conditions, type, and a reading guide — start there when looking for a specific CSV/PNG/dataset. Layout convention: `results/*.csv` + `results/plots/*.png` + `results/logs/*`.
-
-## 3. Running experiments
-
-Each domain has a single `run.py` entry with an `EXPERIMENTS` on/off switch dict:
+Common parameter examples:
 
 ```bash
-uv run python cstr/run.py --list                       # list experiments + switch state
-uv run python cstr/run.py -e baseline -H 5 --alpha 0.5 # one experiment
-uv run python mackey_glass/run.py -e lh_sweep          # L×H grid sweep
-uv run python lorenz/run.py -e generate --sweep        # sweep ρ, generate data
+uv run python mackey_glass/run.py -e base --L 9 --H 5 --alpha 0.5 --temperature 4
+uv run python cstr/run.py -e iterative_distill --distill_variants E,E-soft
+uv run python cstr/run.py -e external_baselines --L 20 --H 15 --seeds 5
+uv run python cstr/run.py -e patchtst_fgl --L_values 20 --H_values 12,15 --seeds 5
+uv run python cstr/run.py -e floor_sweep --seeds 3      # disabled by default
+uv run python cstr/run.py -e lyapunov                    # delayed-chaos diagnostic
 ```
 
-The three-stage FGL pipeline (teacher: 1-step, offset=H-1 → baseline: H-step → student: H-step + KL distillation) is implemented once in `fgl_common.run_fgl_experiment` and reused by all domains. See [`CLAUDE.md`](CLAUDE.md) for the full API and the per-domain experiment list.
+Research analyses used in the August reports:
 
-## 4. Hyperparameters
-
-* **α (alpha)** — CE vs KL weight (0 = full distillation, 1 = baseline-equivalent).
-* **T (temperature)** — softens teacher/student distributions before KL.
-* **L / H** — lookback window / forecast horizon; the dominant variables for FGL effectiveness (the `L+H-1 ≥ τ` threshold holds when sweeping L at fixed H).
-
-## 5. Citation
-
+```bash
+uv run python cstr/archive/analyze_convergence_speed.py
+uv run python cstr/archive/verify_chaotic_iter_floor.py --K 10 --seeds 5
 ```
+
+## Testing
+
+```bash
+uv run pytest -q
+```
+
+Current suite: **86 passed, 1 deselected** for the non-slow set. Tests cover shared iterative distillation, converged baselines, continuous external baselines and MSE rescaling, PatchTST-FGL window alignment, delayed-CSTR generation/stability, Lyapunov diagnostics, floor-sweep wiring, and result-analysis helpers.
+
+## Hyperparameters
+
+- **α (`alpha`)**: weight of the supervised CE loss. `α=0` is full distillation; `α=1` is baseline-equivalent.
+- **T (`temperature`)**: KL softening temperature.
+- **L / H**: lookback and forecast horizon—the dominant variables in this study.
+- **Variant / weight floor**: `A` is uniform, `E` uses a zero-floor amplified MSE gap, and `E-soft` adds a tunable floor to reduce weight drying.
+
+## Research documentation
+
+| Document | Purpose |
+|---|---|
+| [`conclusion/conclusion_1008.md`](conclusion/conclusion_1008.md) | Latest PatchTST-FGL and corrected external-baseline summary |
+| [`conclusion/研究进展报告.md`](conclusion/研究进展报告.md) | Consolidated August presentation report |
+| [`conclusion/项目汇报总结.md`](conclusion/项目汇报总结.md) | Most complete three-system synthesis |
+| [`conclusion/进展0821.md`](conclusion/进展0821.md) | August 21 delayed chaotic CSTR and four-arm distillation findings |
+| [`conclusion/iterative_convergence_speed.md`](conclusion/iterative_convergence_speed.md) | August 9 convergence-speed and regime analysis |
+| [`conclusion/floor_study_final_report.md`](conclusion/floor_study_final_report.md) | CSTR floor-determinant study |
+| [`conclusion/final_conclusions.md`](conclusion/final_conclusions.md) | Earlier three-system conclusions |
+| [`conclusion/archive/`](conclusion/archive/) | Superseded and historical reports |
+
+## Next steps
+
+The highest-priority next experiments are:
+
+1. A controlled τ-family study that varies delay while holding periodicity fixed, converting current floor/chaos correlations into a cleaner causal comparison.
+2. Additional seeds for noisy critical cells, especially long-horizon and short-horizon extremes.
+3. Independent holdout evaluation to remove the current validation/test optimism.
+4. Porting E/E-soft to Mackey–Glass and Lorenz, with adaptive/dynamic floor tuning.
+5. Quantifying information asymmetry directly, e.g. through mutual-information or conditional-entropy contrasts.
+6. Sweep weak-distillation weights (`α∈{0.9,0.95,0.99}`) and response-distribution distillation for PatchTST-FGL.
+
+## Citation
+
+If you use the original FGL method or this repository's code, please cite:
+
+```bibtex
 @article{Gunasekaran2025,
   author = {Gunasekaran, Skye and Kembay, Assel and Ladret, Hugo and Zhu, Rui-Jie and Perrinet, Laurent and Kavehei, Omid and Eshraghian, Jason},
   title = {A predictive approach to enhance time-series forecasting},

@@ -202,9 +202,8 @@ def run_all(args, out_path: str | os.PathLike[str] = _DEFAULT_OUT,
     rows.sort(key=lambda row: (row["dataset"], int(row["L"]), int(row["H"]), int(row["seed"])))
     _write_rows(out_path, rows)
 
-    requested = {(args.dataset, L, H) for L in L_values for H in H_values}
     summary = _summarize([row for row in rows
-                          if (row["dataset"], int(row["L"]), int(row["H"])) in requested])
+                          if (row["dataset"], int(row["L"]), int(row["H"])) in selected])
     _write_summary(summary, summary_path)
     _plot_summary(summary, plot_path)
 
