@@ -72,3 +72,4 @@ def test_deep_baselines_smoke_train_and_evaluate(method):
     assert np.isfinite(result["val_mse"])
     assert np.isfinite(result["test_mse"])
     assert result["test_mse"] >= 0.0
+

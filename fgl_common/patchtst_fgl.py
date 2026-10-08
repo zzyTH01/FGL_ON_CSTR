@@ -125,7 +125,6 @@ def _train_model(model, train_x: torch.Tensor, train_y: torch.Tensor,
     """Train one continuous regression arm and restore its best val state."""
     from .training import EarlyStopper
 
-    torch.manual_seed(seed)
     generator = torch.Generator().manual_seed(seed)
     if teacher_x is None:
         teacher_x = train_x
