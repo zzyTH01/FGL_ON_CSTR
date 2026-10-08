@@ -44,6 +44,14 @@
 | `cstr_weight_diagnostic.png` | 蒸馏权重诊断图 | 三 |
 | `cstr_adaptive_best_predictions.png` | 最佳样本(变体 C seed3)预测 | 三 |
 | `cstr_adaptive_best_scatter.png` | 最佳样本散点 | 三 |
+| `cstr_method_prediction_comparison.png` | L20H15 seed0 GPU 复现：teacher/baseline/student 多方法逐点对比（220 点动态段）；PatchTST FGL **MSE=0.0025**（vs 方差地板 −95%）、Iterative E/E-soft ≈0.012（−76%）、DLinear 0.040、RNN baseline 0.067 | 三/新 |
+| `cstr_method_prediction_comparison_metrics.json` | 上述图物理单位 test MSE；GPU RTX 4060，L=20 H=15 seed=0 epochs=20 round_epochs=10 K=6；⚠️ 2026-10-08 修复 actual 索引偏移 bug（详见脚本注释） | 三/新 |
+| `cstr_method_prediction_comparison_delayed_stable_h2o_tau50_s1_A0.9_b0.03.png` | τ=50 混沌 CSTR（periodicity≈0.55）多方法对比：PatchTST FGL 0.0153、Iterative E 0.0349、DLinear 0.0285、RNN baseline 0.0470 | 六/新 |
+| `cstr_method_prediction_comparison_delayed_stable_h2o_tau50_s1_A0.9_b0.03_metrics.json` | τ=50 物理单位 test MSE 指标 | 六/新 |
+| `cstr_method_prediction_comparison_delayed_stable_h2o_tau100_s1_A0.9_b0.03.png` | τ=100 混沌 CSTR（Lyapunov>0 确认）多方法对比：PatchTST FGL 0.0290、Iterative E 0.0672、RNN baseline 0.0721 | 六/新 |
+| `cstr_method_prediction_comparison_delayed_stable_h2o_tau100_s1_A0.9_b0.03_metrics.json` | τ=100 物理单位 test MSE 指标 | 六/新 |
+| `cstr_method_prediction_comparison_delayed_stable_h2o_tau150_s1_A0.9_b0.03.png` | τ=150 混沌 CSTR（periodicity≈0.48）多方法对比：PatchTST FGL 0.0214、Iterative E 0.0650、Standard FGL 0.1367（劣化） | 六/新 |
+| `cstr_method_prediction_comparison_delayed_stable_h2o_tau150_s1_A0.9_b0.03_metrics.json` | τ=150 物理单位 test MSE 指标 | 六/新 |
 | `adaptive_anchor_L20H15_n5.csv` | 变体 A/C/E 锚点 n=5 补档重跑 | 四 |
 | `adaptive_lh_sweep.csv` | 变体 E vs A 的 L×H 网格(100 行) | 四 |
 | `adaptive_lh_E_vs_A.png` | E 相对 A 降幅热力图 | 四 |

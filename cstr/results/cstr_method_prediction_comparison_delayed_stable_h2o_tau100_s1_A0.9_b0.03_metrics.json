@@ -1,0 +1,25 @@
+{
+  "config": {
+    "L": 20,
+    "H": 15,
+    "seed": 0,
+    "bins": 50,
+    "epochs": 20,
+    "deep_epochs": 50
+  },
+  "test_start_window": 199,
+  "plot_points": 220,
+  "test_mse_physical": {
+    "actual_variance": 0.07655693238462097,
+    "teacher_RNN teacher": 0.03291130685088718,
+    "teacher_PatchTST teacher": 0.006177336209125892,
+    "baseline_RNN baseline": 0.0721179074485441,
+    "baseline_DLinear": 0.054055460881592174,
+    "baseline_PatchTST": 0.03138475139354144,
+    "student_Standard FGL": 0.06870755451225743,
+    "student_Adaptive E": 0.12461521477199528,
+    "student_Iterative E": 0.06716018732982104,
+    "student_Iterative E-soft": 0.06716018732982104,
+    "student_PatchTST FGL": 0.02904926522714628
+  }
+}
