@@ -1,5 +1,7 @@
 # CSTR 外部 Baseline 与 bin-index 重映射比较报告
 
+> **2026-10-08 勘误**：本报告中的深度模型连续物理 MSE 存在反标准化二次平方错误；PatchTST/TCN 的外部优势被高估。修正说明和 PatchTST-FGL 对照见 `patchtst_fgl_report.md`。旧的 PatchTST `2.0e-4 / 1.6e-4` 数值不应继续引用。
+
 **日期**:2026-09-18  
 **分支**:`codex/cstr-external-baselines`  
 **问题**:能否把历史 FGL / 连续自适应蒸馏的 bin-index 结果重映射回物理值 MSE,再与 DLinear、PatchTST 等时序预测方法公平比较?
