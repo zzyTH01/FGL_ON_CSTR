@@ -444,3 +444,25 @@
 - **产生程序**:由 `cstr_iterative_continuous_remap.csv` 与 `cstr_external_baselines.csv` 汇总绘图
 - **基本类型**:log-scale 柱状图,误差条为 5 seeds 标准差
 - **读图指南**:PatchTST/TCN 远低于蒸馏臂;FGL 内部蒸馏改善明显,但不能超过强外部 baseline
+
+## PatchTST-FGL 连续蒸馏系列(2026-10-08)
+
+### cstr_patchtst_fgl.csv
+- **实验归属**：把外部 PatchTST 骨干接入 teacher→baseline→student 连续 FGL 流程
+- **产生程序**：`cstr/run_patchtst_fgl_driver.py`（入口 `cstr/run.py -e patchtst_fgl`）
+- **实验条件**：默认 `data_h2o.pkl`、L20、H∈{12,15}、5 seeds；`α=0.5`、`d_model=32`、`nhead=4`、`dim_feedforward=64`、`lr=5e-4`、最多 50 epochs、patience=10
+- **数据口径**：direct horizon `y[t+L+H-1]`；teacher 输入向后平移 `H-1` 步；train-only 标准化；指标反标准化为物理值 MSE
+- **基本类型**：每 `(dataset,L,H,seed)` 一行，包含 teacher/baseline/student 三个 arm 的物理值 MSE
+- **读表指南**：`baseline_mse` 是无蒸馏 PatchTST；`student_mse<baseline_mse` 表示 FGL 蒸馏有效。可与 `cstr_external_baselines.csv` 的 PatchTST 行同口径对照，但 teacher MSE 使用 teacher 窗口，不应直接当作 H 步前部署误差
+
+### cstr_patchtst_fgl_summary.csv
+- **实验归属**：上述逐 seed 结果按 `(L,H)` 聚合
+- **产生程序**：由 `run_patchtst_fgl_driver.run_all` 自动生成
+- **读表指南**：`student_over_baseline<1` 或 `student_improvement_percent>0` 表示 FGL 相对同骨干 PatchTST baseline 降低误差
+
+### plots/cstr_patchtst_fgl_summary.png
+- **实验归属**：同上
+- **基本类型**：teacher / baseline / student 物理 MSE 的 log-scale 柱状图，误差条为 seed 标准差
+
+### 2026-10-08 实测结论补充
+- 默认 `α=0.5`、5 seeds 的 GPU 实测显示：L20/H12 下 `student/baseline=1.258`，L20/H15 下 `student/baseline=1.536`；两个配置 FGL student 均差于同骨干 PatchTST baseline。详见 `conclusion/patchtst_fgl_report.md`。

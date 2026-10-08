@@ -272,6 +272,13 @@ def run_adaptive_grid_exp(args):
     sweep_adaptive.run_all(args)
 
 
+def run_patchtst_fgl_exp(args):
+    """连续 PatchTST teacher/baseline/student FGL；与外部 PatchTST 同口径。"""
+    sys.path.insert(0, _CSTR_DIR)
+    import run_patchtst_fgl_driver
+    run_patchtst_fgl_driver.run_all(args)
+
+
 def run_lyapunov_exp(args):
     """Lyapunov 指数估计(全部延迟数据集)。对应 cstr/lyapunov_delayed.py。"""
     sys.path.insert(0, _CSTR_DIR)
@@ -296,6 +303,8 @@ EXPERIMENTS = {
     "lh_sweep":        dict(fn=run_lh_sweep_exp,    enabled=True,  note="L×H 网格扫描(主线)"),
     "external_baselines": dict(fn=run_external_baselines_exp, enabled=False,
                               note="外部连续 MSE 基线;Ridge/DLinear/PatchTST/GRU/TCN"),
+    "patchtst_fgl": dict(fn=run_patchtst_fgl_exp, enabled=False,
+                         note="连续 PatchTST teacher/baseline/student FGL；默认关闭"),
     "iterative_remap": dict(fn=run_iterative_remap_exp, enabled=False,
                             note="迭代蒸馏 bin-index→物理值 MSE 重映射;训练集质心为主口径"),
     "floor_sweep":      dict(fn=run_floor_sweep_exp, enabled=False, note="地板成因战役:τ=100 深挖 L×H,记录 baseline/teacher/E_iter 等地板量(H1-H4)"),
@@ -337,6 +346,14 @@ def _add_common_args(p):
                    help="[external_baselines] 逗号分隔方法")
     p.add_argument("--baseline_epochs", type=int, default=50,
                    help="[external_baselines] 深度基线最大 epoch")
+    p.add_argument("--lr", type=float, default=5e-4,
+                   help="[patchtst_fgl] PatchTST 学习率")
+    p.add_argument("--d_model", type=int, default=32,
+                   help="[patchtst_fgl] PatchTST embedding 维度")
+    p.add_argument("--nhead", type=int, default=4, help="[patchtst_fgl] attention heads")
+    p.add_argument("--dim_feedforward", type=int, default=64,
+                   help="[patchtst_fgl] Transformer FFN 维度")
+    p.add_argument("--dropout", type=float, default=0.1, help="[patchtst_fgl] dropout")
     p.add_argument("--L_values", type=str, default=None, help="[lh_sweep] L 取值,逗号分隔")
     p.add_argument("--H_values", type=str, default=None, help="[lh_sweep] H 取值,逗号分隔")
 
