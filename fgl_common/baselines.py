@@ -103,6 +103,7 @@ def build_continuous_windows(data, lookback_window: int, forecasting_horizon: in
 
 
 def _physical_mse(pred_norm: np.ndarray, target_norm: np.ndarray, y_std: float) -> float:
+    """Rescale the already-averaged normalized MSE to physical units once."""
     return float(np.mean((pred_norm - target_norm) ** 2) * y_std ** 2)
 
 
@@ -333,10 +334,13 @@ def run_forecasting_baseline(data, method: str, lookback_window: int,
     if best_state is not None:
         model.load_state_dict(best_state)
     model.eval()
+    val_mse_norm = _evaluate(model, val_loader)
+    test_mse_norm = _evaluate(model, test_loader)
     return {
         "method": method,
-        "val_mse": _physical_mse(np.array([_evaluate(model, val_loader)]), np.zeros(1), w.y_std),
-        "test_mse": _physical_mse(np.array([_evaluate(model, test_loader)]), np.zeros(1), w.y_std),
+        # _evaluate is already an MSE; scale it back to physical units once.
+        "val_mse": val_mse_norm * w.y_std ** 2,
+        "test_mse": test_mse_norm * w.y_std ** 2,
         "n_test": len(w.y_test),
         "epochs": epochs_used,
     }

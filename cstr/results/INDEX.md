@@ -466,3 +466,4 @@
 
 ### 2026-10-08 实测结论补充
 - 默认 `α=0.5`、5 seeds 的 GPU 实测显示：L20/H12 下 `student/baseline=1.258`，L20/H15 下 `student/baseline=1.536`；两个配置 FGL student 均差于同骨干 PatchTST baseline。详见 `conclusion/patchtst_fgl_report.md`。
+- 同批次修正外部连续 baseline 的物理 MSE 反标准化平方错误：深度模型 normalized MSE 只应乘 `y_std²` 一次。修正后 PatchTST baseline 为 H12 `1.983e-3±2.125e-4`、H15 `1.413e-3±3.032e-4`；旧的 H12 `2.0e-4`、H15 `1.6e-4` 不能继续引用。
