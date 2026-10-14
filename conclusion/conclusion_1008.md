@@ -199,7 +199,7 @@ RNN baseline 来自原 bin-index 流程的训练集质心物理 MSE 重映射，
 - 本地非 slow 测试：
 
 ```text
-86 passed, 1 deselected
+90 passed, 1 deselected (2026-10-14 suite updated; original run had 86 tests)
 ```
 
 - GPU smoke test：
