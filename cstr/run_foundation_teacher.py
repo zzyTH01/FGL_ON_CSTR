@@ -135,7 +135,7 @@ def _train(model, x_tr, y_tr, x_val, y_val, *, epochs, batch, patience, lr, seed
             opt.step()
         model.eval()
         with torch.no_grad():
-            v = mse(model(x_val.to(device)), y_val.to(device)).item()
+            v = mse(model(x_val.to(device)).squeeze(-1), y_val.to(device)).item()
         if v + 1e-8 < best_val:
             best_val = v
             best_state = {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
@@ -150,7 +150,11 @@ def _train(model, x_tr, y_tr, x_val, y_val, *, epochs, batch, patience, lr, seed
 def _eval(model, x, y, ys):
     model.eval()
     with torch.no_grad():
-        return float(torch.mean((model(x.to(device)).squeeze(-1) - y.to(device)) ** 2).item() * ys ** 2)
+        pred = model(x.to(device)).squeeze(-1)
+        target = y.to(device)
+        if pred.ndim > target.ndim:
+            pred = pred.squeeze(-1)
+        return float(torch.mean((pred - target) ** 2).item() * ys ** 2)
 
 
 def _distill(student, teacher, sx_tr, tx_tr, y_tr, sx_val, y_val, alpha,

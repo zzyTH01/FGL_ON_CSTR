@@ -3,7 +3,7 @@
 [![Paper](https://img.shields.io/badge/paper-nature_communications-B31B1B.svg)](https://doi.org/10.1038/s41467-025-63786-4)
 [![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1.1-ee4c2c.svg)](https://pytorch.org/)
-[![Tests](https://img.shields.io/badge/tests-86%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-90%20passed-brightgreen.svg)](#testing)
 
 This repository is a research study of **Future-Guided Learning (FGL)**, based on the Nature Communications 2025 paper by Gunasekaran et al. FGL is a teacher–student forecasting framework: a **teacher** sees near-future data through a short-horizon task, while a **student** predicts farther future data. During student training, the teacher's output distribution is distilled into the student with a KL loss.
 
@@ -17,28 +17,37 @@ The original EEG experiments (AES / CHB-MIT) are outside this study's scope and 
 
 ## Latest research status: October 2026
 
-The August reports remain the consolidated multi-system synthesis. The newest result adds a continuous direct-horizon PatchTST pathway and corrects physical-unit rescaling for continuous external baselines; see [`conclusion/conclusion_1008.md`](conclusion/conclusion_1008.md) and [`conclusion/patchtst_fgl_report.md`](conclusion/patchtst_fgl_report.md).
+The historical multi-system synthesis remains useful for the original CSTR/MG/Lorenz regime analysis. The newest CSTR work changes the practical picture:
+
+- **Strong-teacher/FGL**: a larger teacher information window (`L_t >= L_s + H - 1`) plus weak distillation (`alpha=0.9`) gives positive gains on all 10 representative CSTR datasets in `conclusion/1014.md` (+64.9% to +96.9% versus each dataset's internal baseline).
+- **Foundation teacher**: leave-one-target-out pretraining + finetuning lowers mean teacher MSE by 22.2% versus scratch and wins 22/30 seed-level comparisons; it remains unreliable on strongly chaotic delayed CSTR.
+- **Bug corrections are now part of the baseline story.** The test-tail index offset and the external-baseline double `y_std²` rescaling were fixed on 2026-10-08. Old external PatchTST values (`2.0e-4`/`1.6e-4`) must not be cited; corrected values are `1.983e-3` at H12 and `1.413e-3` at H15.
+
+Primary reports, in chronological order:
+
+1. [`conclusion/进展0821.md`](conclusion/进展0821.md) — aperiodic CSTR and iterative-distillation update.
+2. [`conclusion/0930.md`](conclusion/0930.md) — continuous Gaussian FGL and architecture/pretraining exploration.
+3. [`conclusion/conclusion_1008.md`](conclusion/conclusion_1008.md) — PatchTST-FGL plus correction of external-baseline MSE scaling.
+4. [`conclusion/1014.md`](conclusion/1014.md) — latest strong-teacher and foundation-teacher cross-family study.
 
 ### 2026-10-08 continuous PatchTST update
 
 - Added `fgl_common.patchtst_fgl.run_patchtst_fgl`: a continuous teacher→baseline→student pipeline using the same direct-horizon contract as the external baselines.
 - Fixed the deep-baseline physical MSE conversion: normalized MSE is now multiplied by `y_std²` exactly once.
 - On CSTR H₂O (`L=20`, 5 seeds), corrected PatchTST reaches `1.98e-3` MSE at H12 and `1.41e-3` at H15.
-- PatchTST-FGL improves over the best historical RNN-FGL arm by **77.0%** (H12) and **80.1%** (H15), but does not beat the same-backbone PatchTST baseline at `α=0.5`.
-
-The current conclusions refine the earlier "FGL helps or fails" story into a set of regime-dependent mechanisms. The latest consolidated report is [`conclusion/研究进展报告.md`](conclusion/研究进展报告.md); the most complete synthesis is [`conclusion/项目汇报总结.md`](conclusion/项目汇报总结.md). The August 21 aperiodic-CSTR and iterative-distillation findings are summarized in [`conclusion/进展0821.md`](conclusion/进展0821.md), with the convergence-speed analysis in [`conclusion/iterative_convergence_speed.md`](conclusion/iterative_convergence_speed.md).
+- PatchTST-FGL improves over the best historical RNN-FGL arm by **77.0%** (H12) and **80.1%** (H15), but does not beat the same-backbone PatchTST baseline at `alpha=0.5`.
 
 ### Established findings
 
 1. **Lookback `L` and horizon `H` dominate.** Across systems, the `(L, H)` configuration determines whether FGL lands in an effective or harmful region. α and temperature mainly fine-tune within that region. For example, the CSTR L×H grid spans about 220 percentage points in FGL Δ, whereas α×T grids at fixed `(L, H)` change results by roughly 10–15 points.
-2. **Teacher–student information asymmetry is the direct mechanism.** The teacher's `offset = H−1` gives it access to near-future information that the student cannot recover from its own history window. FGL is useful only while this exclusive information remains meaningful.
+2. **Teacher–student information asymmetry is the direct mechanism.** The teacher's `offset = H−1` gives it access to near-future information that the student cannot recover from its own history window. FGL is useful only while this exclusive information remains meaningful. The 2026-10-14 strong-teacher result refines this: both the superset condition and low teacher error are needed.
 3. **Mackey–Glass threshold effect.** With fixed `H` and varying `L`, the condition `L + H − 1 ≥ τ` cleanly marks the transition. At τ = 13 and H = 5, moving from L = 9 to L = 10 drops baseline MSE by about 8.5× and flips FGL from **+78.5%** to **−15.7%**. The formula should not be treated as universally causal: on delayed chaotic CSTR, the equivalent sharp phase transition is falsified.
 4. **CSTR baseline floor.** When the baseline reaches a discretization/data floor, one-shot distillation becomes harmful. Deep L×H experiments show that this floor is governed by `(L, H)`, data predictability, and whether iterative distillation is used. The multivariate floor model reaches **R² = 0.72**.
 5. **Iterative/adaptive distillation is regime-dependent.**
    - Variant **E** uses a zero-floor amplified teacher−student MSE-gap weight. On standard CSTR, a 5×5 grid has 47/50 cell×seed wins over the uniform control, and the L20H15 five-seed anchor gives a +33.2% E-vs-A initial-round improvement (paired p = 0.018).
    - **E-iter** is bimodal: it can substantially accelerate or improve the floor in informative regimes, but collapses when the gap dries up or becomes noisy. Therefore **A-iter remains the safer robust default**, while E-iter is preferable in selected difficult CSTR regimes.
    - On Mackey–Glass, adaptive iterative distillation remains a negative result.
-6. **Delayed-feedback chaotic CSTR is a validated stress test.** The stable delayed-feedback generator produces 13 datasets across τ ∈ [30, 150]. Their Rosenstein Lyapunov exponents are all positive, confirming genuine chaos rather than noise. Periodicity and Lyapunov exponent behave as separate dimensions.
+6. **Delayed-feedback chaotic CSTR is a validated stress test.** The stable delayed-feedback generator produces 13 datasets across τ ∈ [30, 150]. Their Rosenstein Lyapunov exponents are all positive, confirming genuine chaos rather than noise. Periodicity and Lyapunov exponent behave as separate dimensions. This family is also the weak spot for naive foundation-teacher pretraining.
 7. **The "number of feedback loops" hypothesis is exploratory only.** The old ordering—CSTR = 1, Mackey–Glass = 2, Lorenz = ∞—is at best correlational. It lacks causal intervention, has few systems, and competing explanations such as task difficulty and information asymmetry fit the same data. Do not cite it as a causal mechanism.
 
 ### Best one-shot FGL gains
@@ -80,7 +89,7 @@ tests/               Pytest suite for shared and CSTR-specific behavior
 2. **Baseline:** train a student on the H-step task without distillation.
 3. **FGL student:** train the same H-step student with KL distillation from the frozen teacher.
 
-The teacher and student share discretization bin edges so their output distributions are comparable. `run_iterative_distillation` extends this with single/iterative arms and A/E/E-soft weighting variants; `run_baseline_converged` supports the floor-study baseline.
+The teacher and student share discretization bin edges so their output distributions are comparable. `run_iterative_distillation` extends this with single/iterative arms and A/E/E-soft weighting variants; `run_fgl_gaussian` implements continuous μ/logσ Gaussian distillation; `run_baseline_converged` supports the floor-study baseline. Standalone strong-teacher/foundation-teacher drivers live under `cstr/`.
 
 For the continuous external-baseline contract, `fgl_common.baselines` provides Ridge/DLinear/PatchTST/GRU/TCN. `fgl_common.patchtst_fgl.run_patchtst_fgl` reuses the PatchTST idea for a continuous teacher→baseline→student experiment: the student predicts `y[t+L+H-1]`, while the teacher sees a window shifted `H−1` steps forward and distills toward the same target.
 
@@ -106,7 +115,7 @@ Device selection follows `CUDA → MPS → CPU`. Set `FGL_DEVICE=cpu` to force C
 
 Every `data/` and `results/` directory contains an `INDEX.md` describing file provenance, experiment attribution, conditions, and reading order. Sweep outputs use `results/*.csv`, plots use `results/plots/*.png`, and logs use `results/logs/*`.
 
-CSTR data generation requires **Cantera >= 3.2.0**. The active delayed-chaos generator is `cstr/generate_delayed_stable.py`.
+CSTR data generation requires **Cantera >= 3.2.0**. The delayed-chaos generator is `cstr/generate_delayed_stable.py`; `cstr/generate_complex.py` adds 14 multi-delay/forced-delay/parameter-modulated/noisy datasets used by the 2026-10-14 strong-teacher study.
 
 ## Running experiments
 
@@ -130,6 +139,13 @@ uv run python cstr/run.py -e external_baselines --L 20 --H 15 --seeds 5
 uv run python cstr/run.py -e patchtst_fgl --L_values 20 --H_values 12,15 --seeds 5
 uv run python cstr/run.py -e floor_sweep --seeds 3      # disabled by default
 uv run python cstr/run.py -e lyapunov                    # delayed-chaos diagnostic
+
+```bash
+# 2026-10-14 strong-teacher / foundation-teacher pipeline (GPU recommended)
+uv run python cstr/run_teacher_sweep.py --stage sweep
+uv run python cstr/run_student_sweep.py --phase all
+uv run python cstr/generate_complex.py --sweep
+uv run python cstr/run_foundation_teacher.py --phase all
 ```
 
 Research analyses used in the August reports:
@@ -145,7 +161,7 @@ uv run python cstr/archive/verify_chaotic_iter_floor.py --K 10 --seeds 5
 uv run pytest -q
 ```
 
-Current suite: **86 passed, 1 deselected** for the non-slow set. Tests cover shared iterative distillation, converged baselines, continuous external baselines and MSE rescaling, PatchTST-FGL window alignment, delayed-CSTR generation/stability, Lyapunov diagnostics, floor-sweep wiring, and result-analysis helpers.
+Current non-slow suite: **90 passed**. A separate slow smoke test is selected with `uv run pytest -q -m slow` (**1 passed**). Tests cover shared iterative distillation, Gaussian distillation, converged baselines, continuous external baselines and MSE rescaling, PatchTST-FGL window alignment, delayed-CSTR generation/stability, Lyapunov diagnostics, floor-sweep wiring, and result-analysis helpers.
 
 ## Hyperparameters
 
@@ -158,7 +174,9 @@ Current suite: **86 passed, 1 deselected** for the non-slow set. Tests cover sha
 
 | Document | Purpose |
 |---|---|
-| [`conclusion/conclusion_1008.md`](conclusion/conclusion_1008.md) | Latest PatchTST-FGL and corrected external-baseline summary |
+| [`conclusion/1014.md`](conclusion/1014.md) | Latest strong-teacher and foundation-teacher cross-family study |
+| [`conclusion/conclusion_1008.md`](conclusion/conclusion_1008.md) | PatchTST-FGL and corrected external-baseline summary |
+| [`conclusion/0930.md`](conclusion/0930.md) | Continuous Gaussian FGL architecture/pretraining study |
 | [`conclusion/研究进展报告.md`](conclusion/研究进展报告.md) | Consolidated August presentation report |
 | [`conclusion/项目汇报总结.md`](conclusion/项目汇报总结.md) | Most complete three-system synthesis |
 | [`conclusion/进展0821.md`](conclusion/进展0821.md) | August 21 delayed chaotic CSTR and four-arm distillation findings |
@@ -171,12 +189,12 @@ Current suite: **86 passed, 1 deselected** for the non-slow set. Tests cover sha
 
 The highest-priority next experiments are:
 
-1. A controlled τ-family study that varies delay while holding periodicity fixed, converting current floor/chaos correlations into a cleaner causal comparison.
-2. Additional seeds for noisy critical cells, especially long-horizon and short-horizon extremes.
-3. Independent holdout evaluation to remove the current validation/test optimism.
-4. Porting E/E-soft to Mackey–Glass and Lorenz, with adaptive/dynamic floor tuning.
-5. Quantifying information asymmetry directly, e.g. through mutual-information or conditional-entropy contrasts.
-6. Sweep weak-distillation weights (`α∈{0.9,0.95,0.99}`) and response-distribution distillation for PatchTST-FGL.
+1. Extend the strong-teacher window to `L_t=60` and increase seeds beyond n=3 on all representative datasets.
+2. Study why delayed strongly chaotic CSTR resists foundation-teacher pretraining; test scratch-only and longer/domain-adaptive pretraining.
+3. Compare strong-teacher FGL and the corrected external PatchTST on a single holdout protocol, rather than cross-dataset best-seed claims.
+4. Fix tensor-shape warnings in `cstr/run_foundation_teacher.py` before the next GPU run.
+5. Run a controlled τ-family study that varies delay while holding periodicity fixed.
+6. Quantify information asymmetry directly, e.g. through mutual-information or conditional-entropy contrasts.
 
 ## Citation
 

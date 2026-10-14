@@ -15,6 +15,7 @@
     distillation.py   —— KL / KL_weighted / seq_KL / compute_weights
     training.py       —— device / EarlyStopper / evaluate* / run_fgl_experiment /
                          run_iterative_distillation(双权重分布 E/E-soft)/
+                         run_fgl_gaussian(连续 μ/logσ 蒸馏)/
                          run_adaptive_weight / run_adaptive_inference / run_seq2seq
     sweep.py          —— run_lh_sweep (通用 L×H 扫描 + 热力图 + 报告)
 """
@@ -27,6 +28,7 @@ from .training import (
     page_hinkley_update, compute_shared_bin_edges, compute_per_sample_errors,
     compute_per_sample_mse,
     run_fgl_experiment, run_iterative_distillation, run_adaptive_weight, run_adaptive_inference, run_seq2seq, run_baseline_converged,
+    run_fgl_gaussian,
 )
 from .patchtst_fgl import build_continuous_fgl_windows, run_patchtst_fgl
 from .sweep import run_lh_sweep
@@ -44,6 +46,7 @@ __all__ = [
     "page_hinkley_update", "compute_shared_bin_edges", "compute_per_sample_errors",
     "compute_per_sample_mse",
     "run_fgl_experiment", "run_iterative_distillation", "run_adaptive_weight", "run_adaptive_inference", "run_seq2seq", "run_baseline_converged",
+    "run_fgl_gaussian",
     # continuous external baselines / PatchTST FGL
     "build_continuous_fgl_windows", "run_patchtst_fgl",
     # sweep

@@ -2,7 +2,7 @@
 
 本文件是 `cstr/results/` 下全部结果文件(CSV 结果表 / plots 图 / logs 日志)的溯源与读法索引:每个文件对应哪个实验、由哪个程序产生、实验条件是什么、怎么看。研究背景与结论详见 `conclusion/`(重点:`floor_study_final_report.md`、`floor_determinants.md`、`adaptive_continuous_distillation.md`、`iterative_distillation_summary.md`、`chaotic_cstr_fgl_exploration.md`、`best_sample_cstr.md`)。
 
-**目录布局速览**:`results/` 根 = 21 个 `*.csv` 结果表;`results/plots/` = 37 个 `*.png`;`results/logs/` = 7 个日志。数据集在 `cstr/data/`(周期-1:`data.pkl` 温度 / `data_h2o.pkl` H₂O 质量分数,3001 点 dt=0.1s;延迟反馈混沌化:`data_delayed_stable_h2o_tau{...}_s1_A0.9_b0.03.pkl` 系列)。MSE 单位均为 bin-index²(50 bins 离散化),越小越好。
+**目录布局速览(2026-10-14 更新)**:`results/` 根 = 34 个结构化结果表(CSV/JSON)+ `strong_teacher_state.pt`;`results/plots/` = 47 张图;`results/logs/` = 9 个日志。数据集在 `cstr/data/`,含 40 个 `.pkl`(标准周期/强迫/双釜、13 个延迟 τ 族、14 个复杂数据族)。历史早期结果多为 bin-index²(50 bins 离散化);2026-09 起外部 baseline、连续重映射、PatchTST-FGL 和强 Teacher 系列统一为物理值 MSE。混用时必须先检查各文件的数据口径。
 
 ---
 
@@ -44,6 +44,7 @@
 | `cstr_weight_diagnostic.png` | 蒸馏权重诊断图 | 三 |
 | `cstr_adaptive_best_predictions.png` | 最佳样本(变体 C seed3)预测 | 三 |
 | `cstr_adaptive_best_scatter.png` | 最佳样本散点 | 三 |
+| `cstr_continuous_vs_discrete_eiter.png` | 离散阶梯 vs 连续平滑 E-iter 对比；连续输出物理 MSE 0.0043，离散阶梯 0.0122 | 2026-10-12 |
 | `cstr_method_prediction_comparison.png` | L20H15 seed0 GPU 复现：teacher/baseline/student 多方法逐点对比（220 点动态段）；PatchTST FGL **MSE=0.0025**（vs 方差地板 −95%）、Iterative E/E-soft ≈0.012（−76%）、DLinear 0.040、RNN baseline 0.067 | 三/新 |
 | `cstr_method_prediction_comparison_metrics.json` | 上述图物理单位 test MSE；GPU RTX 4060，L=20 H=15 seed=0 epochs=20 round_epochs=10 K=6；⚠️ 2026-10-08 修复 actual 索引偏移 bug（详见脚本注释） | 三/新 |
 | `cstr_method_prediction_comparison_delayed_stable_h2o_tau50_s1_A0.9_b0.03.png` | τ=50 混沌 CSTR（periodicity≈0.55）多方法对比：PatchTST FGL 0.0153、Iterative E 0.0349、DLinear 0.0285、RNN baseline 0.0470 | 六/新 |
@@ -251,6 +252,15 @@
 
 ---
 
+### 离散 vs 连续 E-iter 可视化(2026-10-12)
+
+#### plots/cstr_continuous_vs_discrete_eiter.png
+- **实验归属**:在 CSTR H₂O 测试段对比离散分类蒸馏(阶梯输出)与连续平滑 E-iter 的点预测
+- **产生程序**:GPU 侧绘制产物(2026-10-12);未附独立生成脚本,配置见图内标签与 `conclusion/0930.md`
+- **实验条件**:测试段约 180 点;离散 E-iter 物理 MSE `1.22e-2`,连续 E-iter `4.3e-3`,无蒸馏 baseline `1.01e-2`
+- **基本类型**:双面板点预测折线图,上半对比连续/离散,下半对比连续蒸馏与 baseline
+- **读图指南**:离散预测呈量化阶梯,连续输出消除量化台阶;连续 E-iter 明显更贴近真实曲线。该图是“连续化绕过量化地板”结论的可视化证据,但单段单 run 不能替代 seeds 统计
+
 ## 四、自适应蒸馏变体 E(teacher−student 差距放大加权)
 
 研究问题:把 KL 蒸馏预算按 teacher−student 误差差距(零地板放大)加权,是否稳定优于均匀加权(A)。核心结论:是——锚点 E 5/5 seeds 胜 A(Δinit +33.2%,配对 p≈0.018),网格 25/25 cell 均值为正、平均降 30.4%;机制是弱点高度集中。报告见 `conclusion/adaptive_continuous_distillation.md` §3。
@@ -410,18 +420,21 @@
 | `iterative_phase1_grid_log.txt` | Phase 1 网格脚本(5×5×2,K=6) | 50 cell-seed 逐条进度(含各 cell E/A 对比)+ 汇总表 |
 | `iterative_saturation_log.txt` | K=15 饱和运行(2 点×3 seeds) | 进度 + 汇总(E_iter vs A_iter +37~42%,K=3 时点口径) |
 | `param_sweep_results.txt` | `cstr/archive/param_sweep.py` | U/K/flow 参数扫描逐行 periodicity 输出(全部 ≥0.935,调参无法混沌化) |
+| `cstr_patchtst_fgl_gpu.log` | `cstr/run.py -e patchtst_fgl` GPU 正式运行 | H12/H15 × 5 seeds 逐 seed 结果与汇总,确认 α=0.5 下负迁移 |
+| `foundation_teacher_v2_20261014_134425.log` | `cstr/run_foundation_teacher.py` | 10 个代表数据集 × 3 seeds 的强/Foundation Teacher 全流程日志;⚠️ 前两行为 PyTorch broadcasting warning,后续结果行为准 |
 
 ---
 
 ## 溯源备注与已知异常
 
-1. **`iterative_curves.png` 多次被覆盖**:Phase 0、饱和、锚点、网格四次运行的日志都记录了写该文件(tag 机制加入前的固定输出名);现内容经 git 还原为 Phase 0(K=3,3 面板)版本,后三次运行的曲线分别存于 `iterative_saturation_curves.png`、`iterative_phase1_anchor_curves.png`、`iterative_phase1_grid_curves.png`。
+1. **`foundation_teacher_v2_20261014_134425.log` 前两行是误配形状 warning**:由训练/评估张量 `target` 未统一 `unsqueeze(-1)` 触发,不影响后续汇总指标;下次运行前可修正 `run_foundation_teacher.py` 的 `_eval` 输入形状。
+2. **`iterative_curves.png` 多次被覆盖**:Phase 0、饱和、锚点、网格四次运行的日志都记录了写该文件(tag 机制加入前的固定输出名);现内容经 git 还原为 Phase 0(K=3,3 面板)版本,后三次运行的曲线分别存于 `iterative_saturation_curves.png`、`iterative_phase1_anchor_curves.png`、`iterative_phase1_grid_curves.png`。
 2. **`iterative_sweep.csv` 与 `iterative_saturation_sweep.csv` 同源不同批**:两者 round-0/A_single/E_single 行相同(同 seeds),iter 臂分别为 K=3 与 K=15;饱和运行当时直接写到 `iterative_sweep.csv` 后手工分离,commit 5c690ce 的说明("原 iterative_sweep.csv 仍为 Phase 0 数据")与最终落盘一致。
-3. **未入库的产生脚本**:`iterative_phase1_{anchor,grid}` 的 CSV/PNG/日志与 `adaptive_anchor_L20H15_n5.csv` 由临时脚本产生(结果经 commit e385ce8 / d2a2070 入库,脚本本身未提交),实验条件以 `conclusion/iterative_phase1_cstr.md` 与 commit message 为准。
-4. **`cstr_data_overview.png`** 未能溯源(重构前快照已存在,产生脚本未入库);内容为数据四面板概览。
-5. **`adaptive_weight_results.csv` 含 A–D 四变体**,而脚本 docstring 只写 A/B/C——D 为后续补充;E 变体见第四组(archive 版脚本未含 E)。
-6. **`anchor_*.csv` 的产生脚本现位于 `cstr/archive/`**,原始路径为 `cstr/exp/`(其 `RESULTS_DIR` 指向当时目录,结果文件在 commit 6a24236 重构时归并入 `cstr/results/`)。
-7. **`delayed_tau_sweep_s-1_A0.3_b0.1.csv` 含 1 个 fail 行**(CanteraError),为负反馈构型的负对照数据,非数据损坏。
+4. **未入库的产生脚本**:`iterative_phase1_{anchor,grid}` 的 CSV/PNG/日志与 `adaptive_anchor_L20H15_n5.csv` 由临时脚本产生(结果经 commit e385ce8 / d2a2070 入库,脚本本身未提交),实验条件以 `conclusion/iterative_phase1_cstr.md` 与 commit message 为准。
+5. **`cstr_data_overview.png`** 未能溯源(重构前快照已存在,产生脚本未入库);内容为数据四面板概览。
+6. **`adaptive_weight_results.csv` 含 A–D 四变体**,而脚本 docstring 只写 A/B/C——D 为后续补充;E 变体见第四组(archive 版脚本未含 E)。
+7. **`anchor_*.csv` 的产生脚本现位于 `cstr/archive/`**,原始路径为 `cstr/exp/`(其 `RESULTS_DIR` 指向当时目录,结果文件在 commit 6a24236 重构时归并入 `cstr/results/`)。
+8. **`delayed_tau_sweep_s-1_A0.3_b0.1.csv` 含 1 个 fail 行**(CanteraError),为负反馈构型的负对照数据,非数据损坏。
 
 ## 外部时序预测 Baseline 系列(2026-09-18)
 
@@ -475,3 +488,43 @@
 ### 2026-10-08 实测结论补充
 - 默认 `α=0.5`、5 seeds 的 GPU 实测显示：L20/H12 下 `student/baseline=1.258`，L20/H15 下 `student/baseline=1.536`；两个配置 FGL student 均差于同骨干 PatchTST baseline。详见 `conclusion/patchtst_fgl_report.md`。
 - 同批次修正外部连续 baseline 的物理 MSE 反标准化平方错误：深度模型 normalized MSE 只应乘 `y_std²` 一次。修正后 PatchTST baseline 为 H12 `1.983e-3±2.125e-4`、H15 `1.413e-3±3.032e-4`；旧的 H12 `2.0e-4`、H15 `1.6e-4` 不能继续引用。
+
+## 强 Teacher / Foundation Teacher 系列(2026-10-14)
+
+### cstr_teacher_sweep.csv
+- **实验归属**:Teacher 质量/窗口长度扫描,寻找信息超集条件与强 Teacher 配置
+- **产生程序**:`cstr/run_teacher_sweep.py --stage sweep`
+- **实验条件**:`data_h2o.pkl`,L_s=20/H=12,L_t∈{20,25,31,40,60};架构与学习率网格,3 seeds;物理值 MSE
+- **基本类型**:60 行聚合结果,列含 `L_teacher,d_model,nhead,lr,teacher_mse_mean,teacher_mse_sd`
+- **读表指南**:L_t=20 时约 `5.17e-3`,L_t=31 约 `5.30e-4`,L_t=60 最佳约 `9.56e-5`;说明 teacher 窗口从 `L_s+H-1` 扩到更大超集能显著提升信号质量
+
+### cstr_student_sweep.csv
+- **实验归属**:固定强 Teacher 的学生架构、容量、α 与学生窗口扫描
+- **产生程序**:`cstr/run_student_sweep.py --phase all`
+- **实验条件**:`data_h2o.pkl`;强 Teacher `L_t=60,d_model=64,nhead=8`;`arch/capacity/α` 与 `L_s∈{20,25,31,40}`;3 seeds;物理值 MSE
+- **基本类型**:84 行,列含 `phase,student_arch,capacity,L_s,H,alpha,seed,teacher_mse,baseline_mse,student_mse,improvement_percent`
+- **读表指南**:用于定位后续强 Teacher 实验的学生配置;注意每 seed 的 baseline 本身波动较大,跨架构比较应按 seed 配对或聚合后看趋势
+
+### cstr_strong_teacher_distill.csv
+- **实验归属**:强 Teacher(L_t=60)+ 弱蒸馏 α 扫描
+- **产生程序**:`cstr/run_teacher_sweep.py --stage distill`
+- **实验条件**:`data_h2o.pkl`,L_s=20/H=12,L_t=60,α∈{0.1,0.3,0.5,0.7,0.9},3 seeds,200 epochs;物理值 MSE
+- **基本类型**:15 行逐 seed 结果,列含 `teacher_mse_on_teacher_window,baseline_mse,student_mse,improvement_percent`
+- **读表指南**:α=0.9 平均 student MSE `1.030e-3`,best seed `7.306e-4`;同文件也记录了 teacher 窗口 MSE,不能直接与学生 H-step baseline 当作同任务 MSE
+
+### cstr_foundation_teacher.csv
+- **实验归属**:强 Teacher 跨 8 个数据族验证 + Foundation Teacher(leave-one-target-out 预训练/微调)对比 scratch
+- **产生程序**:`cstr/run_foundation_teacher.py`
+- **实验条件**:10 个代表数据集 × 3 seeds;L_s=20,H=12,L_t=31,α=0.9;pretrain 100 epochs,finetune 100 epochs,student 200 epochs;物理值 MSE
+- **基本类型**:30 行,列含 `family,teacher_scratch_mse,teacher_zero_shot_mse,teacher_finetune_mse,teacher_best_source,baseline_mse,student_mse,improvement_percent`
+- **读表指南**:10 个代表集蒸馏增益 `+64.9%` 至 `+96.9%`;finetuned teacher 平均 `1.176e-2`,scratch `1.512e-2`(约好 22.2%),逐 seed 22/30 胜出。delayed 强混沌族 finetune 仅 5/9 胜出,是预训练盲区。跨数据集外部比较只可与修正后 PatchTST baseline `1.983e-3` 对照,注意目标数据集不同
+
+### strong_teacher_state.pt
+- **实验归属**:`cstr/run_student_sweep.py --phase teacher` 保存的强 Teacher 权重
+- **基本类型**:约 212 KB PyTorch state dict
+- **读表指南**:只用于复现 student sweep;不是通用 Foundation Teacher 权重
+
+### 2026-10-14 结论补充
+- 强 Teacher 的两个必要条件是:(1) `L_t ≥ L_s+H-1` 的信息超集;(2) teacher MSE 足够低。满足后,弱蒸馏 `α=0.9` 在跨数据族上全部正向。
+- Foundation Teacher 在非 delayed 数据族上提升 teacher 质量;强混沌 delayed 族建议 scratch。
+- “首次稳定超越外部 PatchTST”限定为这些目标数据集、best/mean seed 口径;不能推广为所有 CSTR/MG/Lorenz 任务。
