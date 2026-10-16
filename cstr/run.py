@@ -289,6 +289,102 @@ def run_lyapunov_exp(args):
 
 
 # ================================================================
+#  下一阶段实验薄包装
+# ================================================================
+def run_transfer_generalization_exp(args):
+    """Leave-one-example-out CSTR τ 家族教师迁移。"""
+    from fgl_common.transfer import (
+        build_pretrained_teacher,
+        evaluate_teacher_transfer,
+        list_delayed_cstr_datasets,
+        split_lopo,
+    )
+    from fgl_common.transfer_analysis import summarize_transfer
+
+    import csv
+
+    paths = list_delayed_cstr_datasets(os.path.join(_CSTR_DIR, "data"))
+    if not paths:
+        raise RuntimeError("未找到延迟 CSTR τ 数据集;请先运行延迟数据生成器")
+    if args.quick:
+        paths = paths[:4]
+    seeds = range(args.seeds or 1)
+    epochs = 1 if args.quick else 3
+    rows = []
+    outdir = os.path.join(_CSTR_DIR, "results", "transfer")
+    os.makedirs(outdir, exist_ok=True)
+    for seed in seeds:
+        for target in paths:
+            source, _ = split_lopo(paths, target)
+            teacher = build_pretrained_teacher(source, epochs=epochs, seed=seed)
+            rows.extend(evaluate_teacher_transfer(
+                target, teacher, finetune_epochs=epochs,
+                scratch_epochs=epochs, seed=seed,
+            ))
+    out_csv = os.path.join(outdir, "transfer_teacher_lopo.csv")
+    with open(out_csv, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["path", "condition", "teacher_mse"])
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"[transfer] wrote {out_csv} ({len(rows)} rows)")
+
+
+def run_teacher_student_relation_exp(args):
+    """教师优化增益到学生增益的配对量化实验。"""
+    from fgl_common.teacher_transfer import run_teacher_student_transfer
+
+    import csv
+
+    data = _load_data(args.dataset)
+    seed_count = 1 if args.quick else (args.seeds or 5)
+    epochs = 1 if args.quick else args.epochs
+    rows = []
+    for seed in range(seed_count):
+        rows.extend(run_teacher_student_transfer(
+            data, L=args.L, H=args.H, num_bins=args.bins, seed=seed,
+            epochs=epochs, batch_size=args.batch_size, patience=args.patience,
+            alpha=args.alpha, temperature=args.temperature,
+            ensemble_seeds=(seed, seed + 1, seed + 2), verbose=False,
+        ))
+    outdir = os.path.join(_CSTR_DIR, "results", "teacher_transfer")
+    os.makedirs(outdir, exist_ok=True)
+    out_csv = os.path.join(outdir, "teacher_optimization_transfer.csv")
+    fields = list(rows[0].keys()) if rows else [
+        "condition", "seed", "teacher_mse", "student_mse", "teacher_gain",
+        "student_gain", "transfer_ratio", "teacher_relative_gain",
+        "student_relative_gain", "normalized_transfer",
+    ]
+    with open(out_csv, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"[teacher-transfer] wrote {out_csv} ({len(rows)} rows)")
+
+
+def run_complex_multichannel_exp(args):
+    """对已导出的复杂 CSTR 单通道数据逐通道运行 FGL。"""
+    from fgl_common.multichannel import run_channel_grid
+
+    data_dir = os.path.join(_CSTR_DIR, "data", "complex")
+    outdir = os.path.join(_CSTR_DIR, "results", "complex")
+    os.makedirs(outdir, exist_ok=True)
+    rows = run_channel_grid(
+        data_dir,
+        cells=[(args.L, args.H)],
+        seeds=range(1 if args.quick else (args.seeds or 3)),
+        out_csv=os.path.join(outdir, "complex_cstr_fgl.csv"),
+        quick=args.quick,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        patience=args.patience,
+        alpha=args.alpha,
+        temperature=args.temperature,
+        num_bins=args.bins,
+    )
+    print(f"[complex] wrote {len(rows)} rows")
+
+
+# ================================================================
 #  实验开关配置  —— enabled=True 的实验在 `python cstr/run.py` 时运行
 # ================================================================
 EXPERIMENTS = {
@@ -313,6 +409,9 @@ EXPERIMENTS = {
     "iter_grid":        dict(fn=run_iter_grid_exp, enabled=False, note="迭代蒸馏 L×H 网格扫描;对应 sweep_iterative.py"),
     "adaptive_grid":    dict(fn=run_adaptive_grid_exp, enabled=False, note="自适应变体 E vs A L×H 网格;对应 sweep_adaptive.py"),
     "lyapunov":         dict(fn=run_lyapunov_exp, enabled=False, note="Lyapunov 指数估计(全部延迟数据集);对应 lyapunov_delayed.py"),
+    "transfer_generalization": dict(fn=run_transfer_generalization_exp, enabled=False, note="CSTR τ 家族 leave-one-example-out 基础教师迁移"),
+    "teacher_student_relation": dict(fn=run_teacher_student_relation_exp, enabled=False, note="教师优化增益到学生增益的配对量化实验"),
+    "complex_multichannel": dict(fn=run_complex_multichannel_exp, enabled=False, note="复杂 CSTR 多物种数据逐通道 FGL"),
 }
 
 
@@ -356,6 +455,7 @@ def _add_common_args(p):
     p.add_argument("--dropout", type=float, default=0.1, help="[patchtst_fgl] dropout")
     p.add_argument("--L_values", type=str, default=None, help="[lh_sweep] L 取值,逗号分隔")
     p.add_argument("--H_values", type=str, default=None, help="[lh_sweep] H 取值,逗号分隔")
+    p.add_argument("--quick", action="store_true", help="使用下一阶段实验的小规模冒烟配置")
 
 
 def main():

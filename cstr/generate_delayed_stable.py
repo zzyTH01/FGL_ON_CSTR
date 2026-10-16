@@ -123,6 +123,9 @@ def simulate_delayed_feedback_stable(
         h2o_idx = species_names.index("H2O(L)") if "H2O(L)" in species_names else 0
 
     states = ct.SolutionArray(gas, extra=["t"])
+    # Keep an explicit species matrix so downstream multichannel analysis can
+    # access every chemical species without re-running Cantera.
+    species_matrix = []
     t = 0.0
     h2o_buffer = deque(maxlen=tau_delay) if tau_delay > 0 else None
     mdot_min, mdot_max = mdot_base, mdot_base
@@ -152,11 +155,14 @@ def simulate_delayed_feedback_stable(
         mfc.mass_flow_rate = mdot
         network.advance(t)
         states.append(cstr.phase.state, t=t)
+        species_matrix.append(np.array(cstr.phase.Y, copy=True))
 
     return {
         "t": states.t,
         "T": states.T,
         "h2o": states.Y[:, h2o_idx],
+        "species_names": tuple(species_names),
+        "species_matrix": np.asarray(species_matrix),
         "mdot_base": float(mdot_base),
         "mdot_min": float(mdot_min),
         "mdot_max": float(mdot_max),
