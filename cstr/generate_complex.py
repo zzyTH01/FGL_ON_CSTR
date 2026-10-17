@@ -94,7 +94,7 @@ def _base_mdot(gas, sccm=12.0):
 # ==============================================================================
 
 def simulate_multi_delay(
-    taus=(30, 70), amplitudes=(0.15, 0.15), signs=(-1, -1),
+    taus=(30, 70), amplitudes=(0.9, 0.9), signs=(1, 1),
     centers=(0.48, 0.48), widths=(0.1, 0.1),
     temperature=770.0, pressure_pa=60.0 * 133.3, composition="H2:2, O2:1",
     reactor_volume=10.0e-6, mass_flow_sccm=12.0,
@@ -117,31 +117,29 @@ def simulate_multi_delay(
     net = ct.ReactorNet([cstr])
 
     n_steps = int(t_end / dt)
-    delay_bufs = [np.zeros(max(1, int(tau / dt))) for tau in taus]
+    # ``tau`` is expressed in sampling steps, matching generate_delayed_stable.py.
+    delay_bufs = [np.zeros(max(1, int(tau))) for tau in taus]
     h2o_series = np.zeros(n_steps)
     temp_series = np.zeros(n_steps)
 
-    dh_smooth = centers[0] if centers else 0.48
-    filter_beta = 0.1
+    dh_smooths = [center for center in centers] or [0.48]
+    filter_beta = 0.03
     for step in range(n_steps):
         t = step * dt
-        h2o = cstr.thermo["H2O"].Y[0]
+        h2o = cstr.phase["H2O"].Y[0]
         temp = cstr.T
-
-        for buf in delay_bufs:
-            buf[:-1] = buf[1:]
-            buf[-1] = h2o
-
-        dh_smooth = filter_beta * h2o + (1 - filter_beta) * dh_smooth
-
-        onset = min(1.0, t / t_onset) if t_onset > 0 else 1.0
 
         total_feedback = 0.0
         for i, buf in enumerate(delay_bufs):
             delayed_val = buf[0]
-            if delayed_val != 0:
-                fb = signs[i] * amplitudes[i] * np.tanh((dh_smooth - centers[i]) / widths[i])
+            buf[:-1] = buf[1:]
+            buf[-1] = h2o
+            if step >= len(buf):
+                dh_smooths[i] = filter_beta * delayed_val + (1.0 - filter_beta) * dh_smooths[i]
+                fb = signs[i] * amplitudes[i] * np.tanh((dh_smooths[i] - centers[i]) / widths[i])
                 total_feedback += fb
+
+        onset = min(1.0, t / t_onset) if t_onset > 0 else 1.0
         total_feedback = np.clip(total_feedback, -0.9, 0.9)
 
         mdot_target = mdot_base * (1.0 + total_feedback)
@@ -150,7 +148,7 @@ def simulate_multi_delay(
         mfc.mass_flow_rate = mdot
         net.advance(t + dt)
 
-        h2o_series[step] = cstr.thermo["H2O"].Y[0]
+        h2o_series[step] = cstr.phase["H2O"].Y[0]
         temp_series[step] = cstr.T
 
     if multichannel:
@@ -164,11 +162,12 @@ def simulate_multi_delay(
 
 def simulate_forced_delay(
     tau_delay=50, drive_amplitude=0.1, drive_freq=0.03,
-    feedback_amplitude=0.15, center=0.48, width=0.1,
+    feedback_amplitude=0.9, center=0.48, width=0.1,
     temperature=770.0, pressure_pa=60.0 * 133.3,
     reactor_volume=10.0e-6, mass_flow_sccm=12.0,
     wall_area=1.0, heat_transfer_coeff=0.02, valve_coeff=1.0e-9,
     t_end=600.0, dt=0.1, t_onset=50.0,
+    feedback_limit=0.85,
 ):
     """CSTR with sinusoidal forcing + delayed feedback on inlet mdot."""
     gas = _make_gas(temperature, pressure_pa, "H2:2, O2:1")
@@ -185,27 +184,28 @@ def simulate_forced_delay(
     net = ct.ReactorNet([cstr])
 
     n_steps = int(t_end / dt)
-    delay_buf = np.zeros(max(1, int(tau_delay / dt)))
+    # ``tau_delay`` is expressed in sampling steps, as in delayed stable CSTR.
+    delay_buf = np.zeros(max(1, int(tau_delay)))
     h2o_series = np.zeros(n_steps)
     temp_series = np.zeros(n_steps)
 
     dh_smooth = center
-    filter_beta = 0.1
+    filter_beta = 0.03
     for step in range(n_steps):
         t = step * dt
-        h2o = cstr.thermo["H2O"].Y[0]
+        h2o = cstr.phase["H2O"].Y[0]
 
+        delayed_val = delay_buf[0]
         delay_buf[:-1] = delay_buf[1:]
         delay_buf[-1] = h2o
-        dh_smooth = filter_beta * h2o + (1 - filter_beta) * dh_smooth
+        fb = 0.0
+        if step >= len(delay_buf):
+            dh_smooth = filter_beta * delayed_val + (1.0 - filter_beta) * dh_smooth
+            fb = feedback_amplitude * np.tanh((dh_smooth - center) / width)
 
         onset = min(1.0, t / t_onset) if t_onset > 0 else 1.0
         drive = drive_amplitude * np.sin(2 * np.pi * drive_freq * t)
-        delayed_val = delay_buf[0]
-        fb = 0.0
-        if delayed_val != 0:
-            fb = -feedback_amplitude * np.tanh((dh_smooth - center) / width)
-        total = np.clip(drive + fb, -0.9, 0.9)
+        total = np.clip(drive + fb, -feedback_limit, feedback_limit)
 
         mdot_target = mdot_base * (1.0 + total)
         mdot = mdot_base + onset * (mdot_target - mdot_base)
@@ -213,7 +213,7 @@ def simulate_forced_delay(
         mfc.mass_flow_rate = mdot
         net.advance(t + dt)
 
-        h2o_series[step] = cstr.thermo["H2O"].Y[0]
+        h2o_series[step] = cstr.phase["H2O"].Y[0]
         temp_series[step] = cstr.T
 
     return np.column_stack([h2o_series, h2o_series])
@@ -225,51 +225,54 @@ def simulate_forced_delay(
 
 def simulate_param_mod(
     tau_delay=50, volume_start=8e-6, volume_end=14e-6, mod_period=200.0,
-    feedback_amplitude=0.15, center=0.48, width=0.1,
+    feedback_amplitude=0.9, center=0.48, width=0.1,
     temperature=770.0, pressure_pa=60.0 * 133.3,
     mass_flow_sccm=12.0,
     wall_area=1.0, heat_transfer_coeff=0.02, valve_coeff=1.0e-9,
     t_end=600.0, dt=0.1, t_onset=50.0,
+    feedback_limit=0.2,
 ):
     """CSTR with delayed feedback + sinusoidal reactor-volume drift."""
     gas = _make_gas(temperature, pressure_pa, "H2:2, O2:1")
     mdot_base = _base_mdot(gas, mass_flow_sccm)
 
+    vol_mid = (volume_start + volume_end) / 2
+    vol_amp = (volume_end - volume_start) / 2
+
     upstream = ct.Reservoir(gas, clone=True)
     cstr = ct.IdealGasReactor(gas, clone=True)
     mfc = ct.MassFlowController(upstream, cstr, mdot=mdot_base)
-    cstr.volume = volume_start
+    cstr.volume = vol_mid
     env = ct.Reservoir(gas, clone=True)
-    ct.Wall(cstr, env, A=wall_area, U=heat_transfer_coeff)
+    wall = ct.Wall(cstr, env, A=wall_area, U=heat_transfer_coeff)
     downstream = ct.Reservoir(gas, clone=True)
     ct.Valve(cstr, downstream, K=valve_coeff)
     net = ct.ReactorNet([cstr])
 
     n_steps = int(t_end / dt)
-    delay_buf = np.zeros(max(1, int(tau_delay / dt)))
+    # ``tau_delay`` is expressed in sampling steps, as in delayed stable CSTR.
+    delay_buf = np.zeros(max(1, int(tau_delay)))
     h2o_series = np.zeros(n_steps)
     temp_series = np.zeros(n_steps)
 
     dh_smooth = center
-    filter_beta = 0.1
-    vol_mid = (volume_start + volume_end) / 2
-    vol_amp = (volume_end - volume_start) / 2
+    filter_beta = 0.03
     for step in range(n_steps):
         t = step * dt
-        h2o = cstr.thermo["H2O"].Y[0]
-
-        delay_buf[:-1] = delay_buf[1:]
-        delay_buf[-1] = h2o
-        dh_smooth = filter_beta * h2o + (1 - filter_beta) * dh_smooth
-
-        onset = min(1.0, t / t_onset) if t_onset > 0 else 1.0
-        cstr.volume = vol_mid + vol_amp * np.sin(2 * np.pi * t / mod_period)
+        h2o = cstr.phase["H2O"].Y[0]
 
         delayed_val = delay_buf[0]
+        delay_buf[:-1] = delay_buf[1:]
+        delay_buf[-1] = h2o
         fb = 0.0
-        if delayed_val != 0:
-            fb = -feedback_amplitude * np.tanh((dh_smooth - center) / width)
-        total = np.clip(fb, -0.9, 0.9)
+        if step >= len(delay_buf):
+            dh_smooth = filter_beta * delayed_val + (1.0 - filter_beta) * dh_smooth
+            fb = feedback_amplitude * np.tanh((dh_smooth - center) / width)
+
+        onset = min(1.0, t / t_onset) if t_onset > 0 else 1.0
+        # Modulate volume smoothly inside CVODES via moving wall velocity dV/dt = A * v(t)
+        wall.velocity = (vol_amp / wall_area) * (2 * np.pi / mod_period) * np.cos(2 * np.pi * t / mod_period)
+        total = np.clip(fb, -feedback_limit, feedback_limit)
 
         mdot_target = mdot_base * (1.0 + total)
         mdot = mdot_base + onset * (mdot_target - mdot_base)
@@ -277,7 +280,7 @@ def simulate_param_mod(
         mfc.mass_flow_rate = mdot
         net.advance(t + dt)
 
-        h2o_series[step] = cstr.thermo["H2O"].Y[0]
+        h2o_series[step] = cstr.phase["H2O"].Y[0]
         temp_series[step] = cstr.T
 
     return np.column_stack([h2o_series, h2o_series])
@@ -289,13 +292,14 @@ def simulate_param_mod(
 
 def simulate_noisy_control(
     tau_delay=50, noise_std=0.02,
-    feedback_amplitude=0.15, center=0.48, width=0.1,
+    feedback_amplitude=0.9, center=0.48, width=0.1,
     temperature=770.0, pressure_pa=60.0 * 133.3,
     reactor_volume=10.0e-6, mass_flow_sccm=12.0,
     wall_area=1.0, heat_transfer_coeff=0.02, valve_coeff=1.0e-9,
     t_end=600.0, dt=0.1, t_onset=50.0, random_seed=42,
+    feedback_limit=0.2,
 ):
-    """CSTR with delayed feedback + additive Gaussian noise on control input."""
+    """CSTR with delayed feedback + bounded Gaussian noise on control input."""
     rng = np.random.RandomState(random_seed)
     gas = _make_gas(temperature, pressure_pa, "H2:2, O2:1")
     mdot_base = _base_mdot(gas, mass_flow_sccm)
@@ -311,27 +315,28 @@ def simulate_noisy_control(
     net = ct.ReactorNet([cstr])
 
     n_steps = int(t_end / dt)
-    delay_buf = np.zeros(max(1, int(tau_delay / dt)))
+    # ``tau_delay`` is expressed in sampling steps, as in delayed stable CSTR.
+    delay_buf = np.zeros(max(1, int(tau_delay)))
     h2o_series = np.zeros(n_steps)
     temp_series = np.zeros(n_steps)
 
     dh_smooth = center
-    filter_beta = 0.1
+    filter_beta = 0.03
     for step in range(n_steps):
         t = step * dt
-        h2o = cstr.thermo["H2O"].Y[0]
+        h2o = cstr.phase["H2O"].Y[0]
 
+        delayed_val = delay_buf[0]
         delay_buf[:-1] = delay_buf[1:]
         delay_buf[-1] = h2o
-        dh_smooth = filter_beta * h2o + (1 - filter_beta) * dh_smooth
+        fb = 0.0
+        if step >= len(delay_buf):
+            dh_smooth = filter_beta * delayed_val + (1.0 - filter_beta) * dh_smooth
+            fb = feedback_amplitude * np.tanh((dh_smooth - center) / width)
 
         onset = min(1.0, t / t_onset) if t_onset > 0 else 1.0
         noise = rng.normal(0, noise_std)
-        delayed_val = delay_buf[0]
-        fb = 0.0
-        if delayed_val != 0:
-            fb = -feedback_amplitude * np.tanh((dh_smooth - center) / width)
-        total = np.clip(fb + noise, -0.9, 0.9)
+        total = np.clip(fb + noise, -feedback_limit, feedback_limit)
 
         mdot_target = mdot_base * (1.0 + total)
         mdot = mdot_base + onset * (mdot_target - mdot_base)
@@ -339,7 +344,7 @@ def simulate_noisy_control(
         mfc.mass_flow_rate = mdot
         net.advance(t + dt)
 
-        h2o_series[step] = cstr.thermo["H2O"].Y[0]
+        h2o_series[step] = cstr.phase["H2O"].Y[0]
         temp_series[step] = cstr.T
 
     return np.column_stack([h2o_series, h2o_series])
@@ -475,11 +480,11 @@ def _sweep():
     # --- Multi-delay: different tau combinations ---
     print("--- Mode 1: multi-delay feedback ---")
     for taus, amps in [
-        ((30, 70), (0.1, 0.1)),
-        ((50, 120), (0.1, 0.1)),
-        ((30, 70, 120), (0.05, 0.05, 0.05)),
+        ((30, 70), (0.4, 0.4)),
+        ((50, 120), (0.4, 0.4)),
+        ((30, 70, 120), (0.25, 0.25, 0.25)),
     ]:
-        signs = tuple(-1 for _ in taus)
+        signs = tuple(1 for _ in taus)
         centers = tuple(0.48 for _ in taus)
         widths = tuple(0.1 for _ in taus)
         tag = "_".join(str(t) for t in taus)
@@ -513,20 +518,22 @@ def _sweep():
     ]:
         try:
             arr = simulate_param_mod(tau_delay=tau, volume_start=vs, volume_end=ve, mod_period=mp)
-            _save(arr, f"data_complex_parammod_tau{tau}_V{vs:.0e}-{ve:.0e}_T{mp:.0f}.pkl")
+            _save(arr, f"data_complex_parammod_tau{tau}_V{vs:.1e}-{ve:.1e}_T{mp:.0f}.pkl")
         except Exception as e:
             print(f"  SKIPPED tau{tau}: {e}")
 
     # --- Noisy control ---
     print("\n--- Mode 4: noisy control ---")
-    for tau, ns in [
-        (50, 0.01),
-        (50, 0.05),
-        (100, 0.02),
-        (100, 0.08),
+    for tau, ns, fa in [
+        (50, 0.01, 0.5),
+        (50, 0.02, 0.5),
+        (50, 0.05, 0.5),
+        (100, 0.02, 0.5),
+        (100, 0.08, 0.5),
     ]:
         try:
-            arr = simulate_noisy_control(tau_delay=tau, noise_std=ns)
+            arr = simulate_noisy_control(tau_delay=tau, noise_std=ns,
+                                         feedback_amplitude=fa)
             _save(arr, f"data_complex_noisy_tau{tau}_s{ns}.pkl")
         except Exception as e:
             print(f"  SKIPPED tau{tau}_s{ns}: {e}")
@@ -539,7 +546,7 @@ def _single(args):
     if args.mode == "multi_delay":
         taus = tuple(int(x) for x in args.taus.split(","))
         amps = tuple(float(x) for x in args.amplitudes.split(","))
-        signs = tuple(-1 for _ in taus)
+        signs = tuple(1 for _ in taus)
         arr = simulate_multi_delay(taus=taus, amplitudes=amps, signs=signs)
         tag = "_".join(str(t) for t in taus)
         _save(arr, f"data_complex_multidelay_tau{tag}.pkl")

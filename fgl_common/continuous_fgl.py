@@ -49,11 +49,17 @@ def _loader(sx, tx, y, bs, shuffle=False, seed=0):
                       shuffle=shuffle, drop_last=True, generator=gen)
 
 
+def _forward_1d(model, xb):
+    """Reduce models that return ``(batch, 1)`` to ``(batch,)``."""
+    out = model(xb)
+    return out.squeeze(-1) if out.ndim > 1 else out
+
+
 def _mse_per_sample(model, sx, y):
     model.eval()
     with torch.no_grad():
         xb = sx.to(device).view(-1, 1, sx.shape[-1])
-        pred = model(xb).cpu()
+        pred = _forward_1d(model, xb).cpu()
     return ((pred - y) ** 2).numpy()
 
 
@@ -87,11 +93,11 @@ def _train_cont(model, loader, val_sx, val_y, epochs, patience, lr,
             sx = sx.to(device).view(-1, 1, sx.shape[-1])
             tx = tx.to(device).view(-1, 1, tx.shape[-1]) if teacher is not None else sx
             y = y.to(device)
-            out = model(sx)
+            out = _forward_1d(model, sx)
             loss = alpha * mse(out, y)
             if teacher is not None:
                 with torch.no_grad():
-                    tout = teacher(tx)
+                    tout = _forward_1d(teacher, tx)
                 if weights is not None:
                     w = weights[idx.long()].to(device)
                     loss = loss + (1 - alpha) * (w * (out - tout) ** 2).mean()
@@ -100,7 +106,7 @@ def _train_cont(model, loader, val_sx, val_y, epochs, patience, lr,
             opt.zero_grad(); loss.backward(); opt.step()
         model.eval()
         with torch.no_grad():
-            vpred = model(val_sx.to(device).view(-1, 1, val_sx.shape[-1])).cpu()
+            vpred = _forward_1d(model, val_sx.to(device).view(-1, 1, val_sx.shape[-1])).cpu()
             vl = float(((vpred - val_y) ** 2).mean())
         if stop.step(vl, model):
             break
@@ -108,12 +114,13 @@ def _train_cont(model, loader, val_sx, val_y, epochs, patience, lr,
     model.eval()
 
 
-def _cont_mse(model, sx, y):
+def _cont_mse(model, sx, y, y_std: float = 1.0):
+    """MSE in physical units, given the train-only target standard deviation."""
     model.eval()
     with torch.no_grad():
         xb = sx.to(device).view(-1, 1, sx.shape[-1])
-        pred = model(xb).cpu()
-    return float(((pred - y) ** 2).mean())
+        pred = _forward_1d(model, xb).cpu()
+    return float(((pred - y) ** 2).mean() * (y_std ** 2))
 
 
 def run_continuous_iterative_fgl(
@@ -139,10 +146,10 @@ def run_continuous_iterative_fgl(
     _train_cont(student_0, tr_loader, *val_pair, epochs, patience, lr,
                 teacher=teacher, alpha=alpha)
     student = copy.deepcopy(student_0)
-    best_val = _cont_mse(student, d["val_sx"], d["val_y"])
+    best_val = _cont_mse(student, d["val_sx"], d["val_y"], d["y_std"])
     best_state = {k: v.cpu().clone() for k, v in student.state_dict().items()}
     arms = {"student_0": {"val": best_val,
-                          "test": _cont_mse(student, d["test_sx"], d["test_y"])}}
+                          "test": _cont_mse(student, d["test_sx"], d["test_y"], d["y_std"])}}
     if snapshot_fn:
         snapshot_fn(student, 0, best_val, arms["student_0"]["test"])
     for r in range(1, K + 1):
@@ -152,8 +159,8 @@ def run_continuous_iterative_fgl(
         wt = torch.as_tensor(w, dtype=torch.float32)
         _train_cont(student, tr_loader, *val_pair, round_epochs, patience, lr,
                     teacher=teacher, alpha=alpha, weights=wt)
-        mv = _cont_mse(student, d["val_sx"], d["val_y"])
-        mt = _cont_mse(student, d["test_sx"], d["test_y"])
+        mv = _cont_mse(student, d["val_sx"], d["val_y"], d["y_std"])
+        mt = _cont_mse(student, d["test_sx"], d["test_y"], d["y_std"])
         arms[f"round_{r}"] = {"val": mv, "test": mt}
         if snapshot_fn:
             snapshot_fn(student, r, mv, mt)
@@ -163,7 +170,7 @@ def run_continuous_iterative_fgl(
     student.load_state_dict(best_state)
     student.eval()
     arms["final"] = {"val": best_val,
-                     "test": _cont_mse(student, d["test_sx"], d["test_y"])}
+                     "test": _cont_mse(student, d["test_sx"], d["test_y"], d["y_std"])}
     if verbose:
         for k, v in arms.items():
             print(f"  {k:12s}  val={v['val']:.5f}  test={v['test']:.5f}")

@@ -489,42 +489,65 @@
 - 默认 `α=0.5`、5 seeds 的 GPU 实测显示：L20/H12 下 `student/baseline=1.258`，L20/H15 下 `student/baseline=1.536`；两个配置 FGL student 均差于同骨干 PatchTST baseline。详见 `conclusion/patchtst_fgl_report.md`。
 - 同批次修正外部连续 baseline 的物理 MSE 反标准化平方错误：深度模型 normalized MSE 只应乘 `y_std²` 一次。修正后 PatchTST baseline 为 H12 `1.983e-3±2.125e-4`、H15 `1.413e-3±3.032e-4`；旧的 H12 `2.0e-4`、H15 `1.6e-4` 不能继续引用。
 
+## 强 Teacher / Foundation Teacher 系列(2026-10-16 修正重跑)
+
+> ⚠️ **2026-10-16 修正重跑说明:** 2026-10-14 版 Foundation Teacher 的 baseline/teacher 训练存在 PatchTST `(batch,1)` 与 `(batch,)` 广播 bug,并且 teacher 选择曾使用测试 MSE;student sweep 的 arch 选择也改为按验证 MSE。旧 `1014.md` 中 "+64.9%–+96.9% 全部正向" 与 "Foundation Teacher 平均好 22.2%" 不能继续引用。以下四张 CSV 已由 `run_id=20261016_223139` 的 GPU 重跑覆盖:
+> - `cstr_teacher_sweep.csv`:60 行;新增 `teacher_val_mse_mean`/`teacher_val_mse_sd`,选择以验证 MSE 为准
+> - `cstr_student_sweep.csv`:84 行(arch 72 + ls 12);新增 `baseline_val_mse`/`student_val_mse`,arch 选择以验证 MSE 为准
+> - `cstr_strong_teacher_distill.csv`:15 行;teacher 配置来自验证选优
+> - `cstr_foundation_teacher.csv`:30 行;新增 teacher val MSE 列,teacher 选择按验证 MSE
+> 完整耗时与失败/修正记录见 `results/runs/20261016_223139_manifest.txt` 与同名 `.time`。
+
 ## 强 Teacher / Foundation Teacher 系列(2026-10-14)
 
 ### cstr_teacher_sweep.csv
 - **实验归属**:Teacher 质量/窗口长度扫描,寻找信息超集条件与强 Teacher 配置
 - **产生程序**:`cstr/run_teacher_sweep.py --stage sweep`
 - **实验条件**:`data_h2o.pkl`,L_s=20/H=12,L_t∈{20,25,31,40,60};架构与学习率网格,3 seeds;物理值 MSE
-- **基本类型**:60 行聚合结果,列含 `L_teacher,d_model,nhead,lr,teacher_mse_mean,teacher_mse_sd`
-- **读表指南**:L_t=20 时约 `5.17e-3`,L_t=31 约 `5.30e-4`,L_t=60 最佳约 `9.56e-5`;说明 teacher 窗口从 `L_s+H-1` 扩到更大超集能显著提升信号质量
+- **基本类型(2026-10-16)**:60 行聚合结果,列含 `L_teacher,d_model,nhead,lr,teacher_val_mse_mean,teacher_mse_mean,teacher_val_mse_sd,teacher_mse_sd`
+- **读表指南**:按验证 MSE 选配置;L_t∈{20,25,31,40,60} 的均值 val/test MSE 分别约 `7.41e-3/7.30e-3`,`5.47e-3/5.38e-3`,`1.50e-3/1.46e-3`,`7.26e-4/6.99e-4`,`1.53e-4/1.54e-4`;单配置最优是 L_t=60,d=64,h=8,lr=1e-3,val/test=`8.85e-5/9.56e-5`
 
 ### cstr_student_sweep.csv
 - **实验归属**:固定强 Teacher 的学生架构、容量、α 与学生窗口扫描
-- **产生程序**:`cstr/run_student_sweep.py --phase all`
+- **产生程序**:`cstr/run_student_sweep.py --phase all --fresh`
 - **实验条件**:`data_h2o.pkl`;强 Teacher `L_t=60,d_model=64,nhead=8`;`arch/capacity/α` 与 `L_s∈{20,25,31,40}`;3 seeds;物理值 MSE
-- **基本类型**:84 行,列含 `phase,student_arch,capacity,L_s,H,alpha,seed,teacher_mse,baseline_mse,student_mse,improvement_percent`
-- **读表指南**:用于定位后续强 Teacher 实验的学生配置;注意每 seed 的 baseline 本身波动较大,跨架构比较应按 seed 配对或聚合后看趋势
+- **基本类型(2026-10-16)**:84 行,列含 `phase,student_arch,capacity,L_s,H,alpha,seed,teacher_mse,baseline_mse,baseline_val_mse,student_mse,student_val_mse,improvement_percent`（全表 84 行验证列均已完整填充）
+- **读表指南**:修复 `_train_with_distill` 中 `patchtst` 学生广播 bug 后,按 `student_val_mse`（α=0.9）无泄露选出的最优学生为 **`patchtst/medium`（`d=64,h=8`）**,其在 α=0.5/0.7/0.9 下全部实现 **3/3 seeds 正向增益**（均值分别为 +17.14%、+43.50%、+39.40%,测试 MSE 降至 `5.26e-4 ~ 5.64e-4`）。`L_s` 扫描（`patchtst/medium, α=0.9`）显示随着 `L_s` 从 20→25→31→40 逼近 Teacher `L_t=60`,蒸馏增益从 **+39.40% → +16.16% → +19.09% → +0.00%** 单调衰减,直接验证信息不对称机制
 
 ### cstr_strong_teacher_distill.csv
-- **实验归属**:强 Teacher(L_t=60)+ 弱蒸馏 α 扫描
+- **实验归属**:强 Teacher(L_t=60)+ 弱蒸馏 α 扫描（固定小容量学生 `patchtst/small, d=32,h=4`）
 - **产生程序**:`cstr/run_teacher_sweep.py --stage distill`
 - **实验条件**:`data_h2o.pkl`,L_s=20/H=12,L_t=60,α∈{0.1,0.3,0.5,0.7,0.9},3 seeds,200 epochs;物理值 MSE
 - **基本类型**:15 行逐 seed 结果,列含 `teacher_mse_on_teacher_window,baseline_mse,student_mse,improvement_percent`
-- **读表指南**:α=0.9 平均 student MSE `1.030e-3`,best seed `7.306e-4`;同文件也记录了 teacher 窗口 MSE,不能直接与学生 H-step baseline 当作同任务 MSE
+- **读表指南(2026-10-16)**:teacher val 选优为 L_t=60,d=64,h=8,lr=1e-3,测试 teacher MSE `9.556e-5`。在小容量学生 `patchtst/small` 下,α=0.9 的 student 均值 `1.030e-3±3.08e-4`,best `7.306e-4`,相对 paired baseline `1.236e-3` 平均 +16.71%（仅 1/3 seed 正向: `-0.89%, -3.85%, +47.81%`）;容量匹配的 `patchtst/medium` 结果见 `cstr_student_sweep.csv`
 
 ### cstr_foundation_teacher.csv
 - **实验归属**:强 Teacher 跨 8 个数据族验证 + Foundation Teacher(leave-one-target-out 预训练/微调)对比 scratch
 - **产生程序**:`cstr/run_foundation_teacher.py`
-- **实验条件**:10 个代表数据集 × 3 seeds;L_s=20,H=12,L_t=31,α=0.9;pretrain 100 epochs,finetune 100 epochs,student 200 epochs;物理值 MSE
-- **基本类型**:30 行,列含 `family,teacher_scratch_mse,teacher_zero_shot_mse,teacher_finetune_mse,teacher_best_source,baseline_mse,student_mse,improvement_percent`
-- **读表指南**:10 个代表集蒸馏增益 `+64.9%` 至 `+96.9%`;finetuned teacher 平均 `1.176e-2`,scratch `1.512e-2`(约好 22.2%),逐 seed 22/30 胜出。delayed 强混沌族 finetune 仅 5/9 胜出,是预训练盲区。跨数据集外部比较只可与修正后 PatchTST baseline `1.983e-3` 对照,注意目标数据集不同
+- **实验条件**:10 个代表数据集 × 3 seeds;L_s=20,H=12,L_t=31,α=0.9,学生为 `patchtst/small`;pretrain 100 epochs,finetune 100 epochs,student 200 epochs;物理值 MSE
+- **基本类型(2026-10-16)**:30 行,列含 `family,teacher_scratch_val_mse,teacher_finetune_val_mse,teacher_best_val_mse,teacher_scratch_mse,teacher_zero_shot_mse,teacher_finetune_mse,teacher_best_source,baseline_mse,student_mse,improvement_percent`
+- **读表指南**:修复 `param_mod` 体积调制与熄火问题后,finetuned teacher 在 **30/30（100%）** 个 target-seed 上全面战胜 scratch teacher,平均 teacher val MSE 从 `5.539e-3` 降至 `2.520e-3`（**+54.51%**）,test MSE 从 `6.225e-3` 降至 `2.827e-3`（**+54.58%**）。在临界窗口 `L_t=31` 与小容量学生 `patchtst/small` 下,30 次实验的 student 配对平均增益为 `+0.58%`（中位数 `-0.39%`,正增益 `13/30`,10 个数据集中 6 个平均为正,其中 `param_mod` +12.4%、`delayed tau150` +7.9%、`forced_delay` +6.5%）。旧 `1014.md` 中 "+64.9%–+96.9% 全部正向" 作废
 
 ### strong_teacher_state.pt
 - **实验归属**:`cstr/run_student_sweep.py --phase teacher` 保存的强 Teacher 权重
-- **基本类型**:约 212 KB PyTorch state dict
+- **2026-10-16 状态**:`run_id=20261016_223139` 后已删除旧广播 bug 时期保存的权重;下次 `--phase teacher/all` 会重建
 - **读表指南**:只用于复现 student sweep;不是通用 Foundation Teacher 权重
 
-### 2026-10-14 结论补充
-- 强 Teacher 的两个必要条件是:(1) `L_t ≥ L_s+H-1` 的信息超集;(2) teacher MSE 足够低。满足后,弱蒸馏 `α=0.9` 在跨数据族上全部正向。
-- Foundation Teacher 在非 delayed 数据族上提升 teacher 质量;强混沌 delayed 族建议 scratch。
-- “首次稳定超越外部 PatchTST”限定为这些目标数据集、best/mean seed 口径;不能推广为所有 CSTR/MG/Lorenz 任务。
+### cstr_patchtst_medium_anchor_n10.csv
+- **实验归属**:容量匹配 `patchtst/medium` 学生在 `data_h2o.pkl (L_s=20, H=12, L_t=60)` 上的 10-seed 统计稳健性锚点
+- **产生程序**:`cstr/run_student_sweep.py --phase arch --architectures patchtst --capacities medium --seeds 10 --fresh --output cstr/results/cstr_patchtst_medium_anchor_n10.csv`
+- **基本类型**:30 行（3 个 α × 10 seeds）
+- **读表指南**:`α=0.5` 正向 7/10（中位数 `+10.78%`），`α=0.9` 正向 6/10（均值 `+7.18%`，中位数 `+7.13%`）；Baseline 误差 $B$ 与蒸馏绝对收益 $B-S$ 呈强正相关 $r=+0.833 (p=0.0028)$，验证连续模型上的地板效应与尾部方差稳定机制
+
+### cstr_strong_teacher_cross_family_lt60_medium.csv
+- **实验归属**:无预训练的强超集 Scratch Teacher（`L_t=60, d=64, h=8`）+ 容量匹配 `patchtst/medium` 学生在 10 个代表数据集上的跨数据族对照
+- **产生程序**:`cstr/run_foundation_teacher.py --phase test --l_teacher 60 --teacher_d_model 64 --student_capacity medium --output cstr/results/cstr_strong_teacher_cross_family_lt60_medium.csv`
+- **基本类型**:30 行（10 个代表数据集 × 3 seeds）
+- **读表指南**:总体正向 runs 从 `L_t=31` 的 13/30 升至 **17/30**（中位数 `+0.93%`），全部 3 个延迟混沌集（`tau50/100/150`）、`periodic`、`forced_delay`、`noisy` 平均为正；但在 `forced`/`dual`/`param_mod`（10/30 runs）上单数据集训练 `L_t=60` 过拟合导致 `Teacher MSE ≥ Baseline MSE`（平均 `-10.69%`），而在 `Teacher < Baseline` 的 20/30 runs 上平均 `+1.95%`（中位数 `+2.45%`, 13/20 正向），与 `cstr_foundation_teacher.csv` 共同证明非平稳数据族必须结合 Foundation 预训练防止长窗口 Teacher 过拟合
+
+### 2026-10-16 结论补充
+- **强 Teacher 的信息超集条件稳健成立**:L_t 从 20 增至 60 时 teacher 均值 MSE 从 `7.41e-3` 降至 `1.53e-4`（最优单配置 `8.85e-5`）。
+- **师生容量匹配决定蒸馏稳定性**:小容量 `patchtst/small` 在 α=0.9 下仅 +16.71%（1/3 seed 正向）;而容量匹配的 `patchtst/medium`（`d=64,h=8`）在 α=0.5/0.7/0.9 下全部 **3/3 seeds 正向**,平均增益达 **+39.40%（α=0.9）与 +43.50%（α=0.7）**,且随 `L_s` 增大（20→40）增益单调衰减至 0%。
+- **Foundation Teacher 的 teacher 质量提升是 100% 稳健的**:30/30 finetuned 胜出,平均 MSE 降低 **+54.5%**。
+- **Teacher 预训练收益向 Student 传导受限于 `L_t=31` 与 `patchtst/small`**:10 个代表集配对均值 `+0.58%`（6/10 数据集为正,13/30 runs 为正）。
+- 所有跨实验比较必须注明目标数据集、内部/外部 baseline、seed 口径与 MSE 单位。

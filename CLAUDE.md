@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Future-Guided Learning (FGL) — implementation for the Nature Communications 2025 paper *"A predictive approach to enhance time-series forecasting"*. FGL enhances time-series forecasting via knowledge distillation: a **teacher** model sees near-future data (short horizon), a **student** model predicts far-future data (long horizon), and the teacher's insights are distilled into the student during training.
 
-The repo covers **three regression domains** studying *when* FGL helps. Robust findings: **L (lookback) and H (horizon) are the dominant variables** (with a `L+H-1 ≥ τ` threshold on MG and a baseline "floor" effect on CSTR); the teacher–student **information asymmetry** is the proximal mechanism. The "number of feedback loops" (CSTR=1, MG=2, Lorenz=∞) is treated as an **exploratory, correlational hypothesis, not a causal conclusion**. MG τ=13 and Lorenz ρ=60 are good benchmarks; CSTR's period-1 oscillation yields limited FGL gain. Historical consolidated findings live in `conclusion/研究进展报告.md` (2026-07 multi-system report) and `conclusion/项目汇报总结.md` (most complete); date-staged updates are `conclusion/进展0821.md`, `conclusion/0930.md`, `conclusion/conclusion_1008.md`, and the latest `conclusion/1014.md`. `conclusion/final_conclusions.md` covers the earlier three-system conclusions; superseded/duplicate reports are archived in `conclusion/archive/`. (The original paper's EEG experiments — AES/CHBMIT — are outside this study's scope and have been removed.)
+The repo covers **three regression domains** studying *when* FGL helps. Robust findings: **L (lookback) and H (horizon) are the dominant variables** (with a `L+H-1 ≥ τ` threshold on MG and a baseline "floor" effect on CSTR); the teacher–student **information asymmetry** is the proximal mechanism. The "number of feedback loops" (CSTR=1, MG=2, Lorenz=∞) is treated as an **exploratory, correlational hypothesis, not a causal conclusion**. MG τ=13 and Lorenz ρ=60 are good benchmarks; CSTR's period-1 oscillation yields limited FGL gain. Historical consolidated findings live in `conclusion/研究进展报告.md` (2026-07 multi-system report) and `conclusion/项目汇报总结.md` (most complete); date-staged updates are `conclusion/进展0821.md`, `conclusion/0930.md`, `conclusion/conclusion_1008.md`, `conclusion/1014.md` (superseded for strong-teacher/foundation-teacher results), and the latest corrected `conclusion/1016.md`. `conclusion/final_conclusions.md` covers the earlier three-system conclusions; superseded/duplicate reports are archived in `conclusion/archive/`. (The original paper's EEG experiments — AES/CHBMIT — are outside this study's scope and have been removed.)
 
 | Domain | Directory | Task type | Model | Metric |
 |--------|-----------|-----------|-------|--------|
@@ -18,7 +18,7 @@ The repo covers **three regression domains** studying *when* FGL helps. Robust f
 
 All three regression domains (cstr / mackey_glass / lorenz) share one library — **`fgl_common/`** — which consolidates what used to be duplicated across ~18 scripts:
 
-- **`models.py`** — `RNN`, `LSTMModel`, `RNNRegression`, `SeqRNN` (all take `(batch, 1, lookback_window)`).
+- **`models.py`** — `RNN`, `LSTMModel`, `TemporalRNN`, `RNNRegression`, `SeqRNN` (all take `(batch, 1, lookback_window)`).
 - **`data.py`** — `create_time_series_dataset(data, lookback_window, forecasting_horizon, num_bins, val_size, test_size, offset=0, MSE=False, batch_size=1, bin_edges=None)` — sliding-window + discretization + DataLoaders. The `offset` param shifts indices to align teacher/student streams. Also `create_seq_dataset` (multi-step targets).
 - **`distillation.py`** — `KL(student_logits, teacher_logits, temperature, alpha)` = `(1-α)·T²·KL(softmax(teacher/T)‖log_softmax(student/T))`; plus `KL_weighted`, `seq_KL`, `compute_weights`.
 - **`training.py`** — `device`, `EarlyStopper`, `evaluate*` (classification/regression/seq, optional Page-Hinkley drift retrain), and the **unified** `run_fgl_experiment(data, lookback_window, forecasting_horizon, model_fn=RNN, alpha, temperature, num_bins, epochs, regression=False, use_ph=False, ...)` — the 3-stage teacher→baseline→student loop. Variant differences collapse into parameters (`model_fn` / `regression` / `use_ph`). Also `run_iterative_distillation` (continuous adaptive distillation, dual weight distributions: `E` hard zero-floor / `E-soft` slightly-softened sigmoid, via `weight_distributions` list → `{v}_single`/`{v}_iter` arms + shared `A_single`/`A_iter` controls; `variant` kept as backward-compatible alias; `w_floors` per-variant floor override), `run_fgl_gaussian` (continuous μ/logσ Gaussian NLL + closed-form KL), `run_adaptive_weight`, `run_adaptive_inference`, `run_seq2seq`.
@@ -40,7 +40,7 @@ python cstr/run.py --list                # list all + switch state + notes
 ```
 
 - **`cstr/run.py`** — baseline / lstm / regression / seq2seq / adaptive / adaptive_weight / **lh_sweep** / **iterative_distill** / external_baselines / patchtst_fgl / iterative_remap / floor_sweep / delayed_fgl / delayed_iter / iter_grid / adaptive_grid / lyapunov (enabled: baseline, lh_sweep, iterative_distill; everything else off). Non-mainline CSTR optimizations default off. (`adaptive_weight` variant E — amplified teacher−student MSE-gap weighting — is verified effective on CSTR; see `conclusion/`. `iterative_distill` runs both `E`/`E-soft` weight distributions via `--distill_variants`; CSV → `cstr/results/iterative_distill.csv`.)
-- **`cstr/` standalone GPU drivers** — `run_teacher_sweep.py`, `run_student_sweep.py`, and `run_foundation_teacher.py` implement the 2026-10-14 strong-teacher/foundation-teacher pipeline; `generate_complex.py` creates the 14 complex CSTR datasets; `plot_method_comparison.py` and `plot_pretrain_finetune_eiter.py` produce diagnostic prediction figures. These are run directly with `uv run python ...`, not wrapped in `run.py`.
+- **`cstr/` standalone GPU drivers** — `run_teacher_sweep.py`, `run_student_sweep.py`, and `run_foundation_teacher.py` implement the strong-teacher/foundation-teacher pipeline; `generate_complex.py` creates the 15 complex CSTR datasets; `plot_method_comparison.py` and `plot_pretrain_finetune_eiter.py` produce diagnostic prediction figures. These are run directly with `uv run python ...`, not wrapped in `run.py`.
 - **`mackey_glass/run.py`** — base / drift / **lh_sweep** / tau_sweep / l_threshold / h_threshold / geometry / iterative_distill (enabled: base, lh_sweep; iterative_distill stays **off** — MG negative result, CLI/CSV ready). Threshold/geometry tests verify the L+H-1≥τ formula.
 - **`lorenz/run.py`** — **generate** (ρ sweep) / **lh_sweep** (ρ=60 strong chaos).
 
@@ -62,7 +62,7 @@ Teacher dataset uses `offset=H-1`, `forecasting_horizon=1`; student uses `offset
 
 ## CSTR data generation (kept as standalone scripts)
 
-`cstr/generate.py` (original H₂/O₂ combustion → `data/data.pkl`, `data/data_h2o.pkl`), `generate_dual_cstr.py`, `generate_forced.py`, `generate_delayed_feedback.py`, `generate_delayed_stable.py` (the active stable delayed-feedback generator — bounded control + onset + EMA, produces the 13 τ-sweep datasets used by floor/lyapunov/delayed experiments; has tests in `tests/cstr/`), and `generate_complex.py` (14 multi-delay / forced-delay / param-mod / noisy datasets for the strong-teacher study) are standalone (each has its own argparse + `--sweep`). **All generators write directly into `cstr/data/`.** Requires `cantera >= 3.2.0`.
+`cstr/generate.py` (original H₂/O₂ combustion → `data/data.pkl`, `data/data_h2o.pkl`), `generate_dual_cstr.py`, `generate_forced.py`, `generate_delayed_feedback.py`, `generate_delayed_stable.py` (the active stable delayed-feedback generator — bounded control + onset + EMA, produces the 13 τ-sweep datasets used by floor/lyapunov/delayed experiments; has tests in `tests/cstr/`), and `generate_complex.py` (15 multi-delay / forced-delay / param-mod / noisy datasets for the strong-teacher study) are standalone (each has its own argparse + `--sweep`). **All generators write directly into `cstr/data/`.** Requires `cantera >= 3.2.0`.
 
 ## Directory layout (regression domains)
 
@@ -79,13 +79,13 @@ cstr/  mackey_glass/  lorenz/
 ├── archive/          # old single-purpose scripts (traceability)
 └── (mackey_glass only) utils/utils.py  # re-export fgl_common + MackeyGlass class
 fgl_common/           # shared library (models/data/distillation/training/continuous_eval/baselines/patchtst_fgl/sweep)
-conclusion/           # research summaries + date-staged reports (`1014.md` = latest; archive/ for superseded)
+conclusion/           # research summaries + date-staged reports (`1016.md` = latest; archive/ for superseded)
 docs/                 # references: paper PDF, Cantera notebook, notes
 ```
 
 ## Data conventions
 - Mackey-Glass: generated on-the-fly via `MackeyGlass` class (jitcdde) in `mackey_glass/utils/utils.py`; the τ=13 pre-generated snapshot lives at `mackey_glass/data/data.pkl` (note: `utils/generate.py`'s inline default is τ=17 — do not blindly regenerate; see `mackey_glass/data/INDEX.md`).
-- CSTR: pre-generated by `cstr/generate*.py` (Cantera), saved as 2-column float64 tensors in `cstr/data/`: 2 original, 6 forced/dual control, 13 delayed τ, and 14 complex-family datasets. See `cstr/data/INDEX.md` for exact provenance.
+- CSTR: pre-generated by `cstr/generate*.py` (Cantera), saved as 2-column float64 tensors in `cstr/data/`: 2 original, 6 forced/dual control, 13 delayed τ, and 15 complex-family datasets. See `cstr/data/INDEX.md` for exact provenance.
 - Lorenz: generated on-the-fly by `lorenz/run.py` (`solve_ivp`); per-ρ snapshots named `lorenz_rho{ρ:g}.pkl` (integer ρ without `.0`) in `lorenz/data/`.
 - All `.pkl` are PyTorch tensors saved with `pickle.dump()`.
 
@@ -95,6 +95,6 @@ docs/                 # references: paper PDF, Cantera notebook, notes
 - New result files should follow the `{domain}_{experiment}[_{variant}]` prefix; historical filenames are kept as-is and mapped via INDEX.md.
 
 ## Environment
-- Python 3.11, PyTorch 2.1.1, package manager `uv` (`.venv/` at repo root), current non-slow suite: **90 passed**, plus 1 slow smoke test (run `uv run pytest -q -m slow` for 1/1).
+- Python 3.11, PyTorch 2.1.1, package manager `uv` (`.venv/` at repo root), current non-slow suite: **120 passed**, plus 1 slow smoke test (run `uv run pytest -q -m slow` for 1/1).
 - Device: CUDA > MPS > CPU (automatic, defined once in `fgl_common.training`; override with `FGL_DEVICE`).
 - CSTR: `cantera>=3.2.0`. MG: `jitcdde`, `sympy`. Lorenz: `scipy`. Common: `numpy`, `matplotlib`, `tqdm`.

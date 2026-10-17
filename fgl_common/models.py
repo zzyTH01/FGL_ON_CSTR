@@ -5,6 +5,7 @@
 - ``RNN``         —— 2 层 RNN + FC-ReLU-FC,分类头(输出 num_bins 个 logits)。
                      teacher/student 的默认模型。迁自 ``mackey_glass/utils/utils.py``。
 - ``LSTMModel``   —— 2 层 LSTM 分类对照。收自 ``cstr/exp/fgl_cstr_lstm.py``。
+- ``TemporalRNN`` —— 真正沿 L 个时间步递归的可选新模型。
 - ``RNNRegression``—— RNN 连续值回归(输出标量)。收自 ``cstr/exp/fgl_cstr_regression.py``。
 - ``SeqRNN``      —— 多步序列预测(输出 ``output_steps × num_bins``)。收自 ``cstr/exp/fgl_cstr_seq2seq.py``。
 """
@@ -32,6 +33,31 @@ class RNN(nn.Module):
         out = nn.functional.relu(out)
         out = self.fc2(out)
         return out
+
+
+class TemporalRNN(nn.Module):
+    """True step-by-step RNN over a length-``L`` univariate window.
+
+    Historical ``RNN`` / ``LSTMModel`` accept ``(batch, seq_len=1, input_size=L)``
+    because they were migrated from the original paper's code.  New temporal
+    experiments should use this class instead; it uses ``input_size=1`` and
+    transposes the storage convention to ``(batch, seq_len=L, input_size=1)``.
+    """
+
+    def __init__(self, input_size, hidden_size, output_size, num_layers=2):
+        super().__init__()
+        del input_size  # sequence length is inferred from the tensor; features are scalar
+        self.rnn = nn.RNN(1, hidden_size, num_layers,
+                          batch_first=True,
+                          dropout=0.2 if num_layers > 1 else 0.0)
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        # Keep project storage (batch, 1, L); process time as (batch, L, 1).
+        out, _ = self.rnn(x.transpose(1, 2))
+        out = F.relu(self.fc1(out[:, -1, :]))
+        return self.fc2(out)
 
 
 class LSTMModel(nn.Module):

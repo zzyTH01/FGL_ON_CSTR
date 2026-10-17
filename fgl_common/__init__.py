@@ -19,7 +19,7 @@
                          run_adaptive_weight / run_adaptive_inference / run_seq2seq
     sweep.py          —— run_lh_sweep (通用 L×H 扫描 + 热力图 + 报告)
 """
-from .models import RNN, LSTMModel, RNNRegression, SeqRNN
+from .models import RNN, LSTMModel, TemporalRNN, RNNRegression, SeqRNN
 from .data import create_time_series_dataset, create_seq_dataset
 from .distillation import KL, KL_weighted, seq_KL, compute_weights
 from .training import (
@@ -35,7 +35,7 @@ from .sweep import run_lh_sweep
 
 __all__ = [
     # models
-    "RNN", "LSTMModel", "RNNRegression", "SeqRNN", "PatchTST",
+    "RNN", "LSTMModel", "TemporalRNN", "RNNRegression", "SeqRNN", "PatchTST",
     # data
     "create_time_series_dataset", "create_seq_dataset",
     # distillation

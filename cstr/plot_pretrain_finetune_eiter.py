@@ -101,12 +101,12 @@ train_simple(baseline_conv, s_tr, s_va, EPOCHS_CONV, patience=10)
 # ---- 4. E-iter (iterative adaptive distillation, best-by-val) ----
 snaps = []
 def snap(s, r, mv, mt):
-    snaps.append((r, copy.deepcopy(s), float(mt)))
+    snaps.append((r, copy.deepcopy(s), float(mv), float(mt)))
 run_iterative_distillation(
     data, L=L, H=H, num_bins=NB, epochs=EPOCHS_INIT, round_epochs=ROUND_EPOCHS,
     K=K, seed=SEED, weight_distributions=("E",), verbose=False,
     e_iter_snapshot_fn=snap)
-best_r, e_iter_model, e_iter_bin_mse = min(snaps, key=lambda t: t[2])
+best_r, e_iter_model, _, e_iter_bin_mse = min(snaps, key=lambda t: t[2])
 
 # ---- Predict on full test set ----
 def predict(model):

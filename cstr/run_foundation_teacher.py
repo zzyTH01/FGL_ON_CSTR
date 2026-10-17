@@ -71,9 +71,9 @@ FAMILIES = {
                      for (t, a, f) in ((50, "0.05", "0.03"), (50, "0.1", "0.05"),
                                        (80, "0.08", "0.02"), (100, "0.05", "0.07"))],
     "param_mod": [f"data_complex_parammod_tau{t}_V{vs}-{ve}_T{mp}.pkl"
-                  for (t, vs, ve, mp) in (("50", "8e-06", "1e-05", "200"),
-                                          ("80", "8e-06", "1e-05", "150"),
-                                          ("50", "6e-06", "2e-05", "300"))],
+                  for (t, vs, ve, mp) in (("50", "8.0e-06", "1.4e-05", "200"),
+                                          ("80", "8.0e-06", "1.4e-05", "150"),
+                                          ("50", "6.0e-06", "1.6e-05", "300"))],
     "noisy": [f"data_complex_noisy_tau{t}_s{n}.pkl"
               for (t, n) in ((50, "0.01"), (50, "0.02"), (100, "0.02"))],
 }
@@ -81,9 +81,14 @@ FAMILIES = {
 ALL_H2O = [f for files in FAMILIES.values() for f in files]
 
 
+_DATA_CACHE: dict[str, np.ndarray] = {}
+
+
 def _load(name):
-    with open(os.path.join(_CSTR_DIR, "data", name), "rb") as f:
-        return np.asarray(pickle.load(f), dtype=np.float64)
+    if name not in _DATA_CACHE:
+        with open(os.path.join(_CSTR_DIR, "data", name), "rb") as f:
+            _DATA_CACHE[name] = np.asarray(pickle.load(f), dtype=np.float64)
+    return _DATA_CACHE[name]
 
 
 def _windows(arr, l_w, horizon, teacher_offset):
@@ -121,21 +126,26 @@ def _t(x, y, xm, xs, ym, ys):
 
 def _train(model, x_tr, y_tr, x_val, y_val, *, epochs, batch, patience, lr, seed):
     torch.manual_seed(seed)
-    loader = DataLoader(TensorDataset(x_tr, y_tr), batch_size=batch, shuffle=True,
-                        generator=torch.Generator().manual_seed(seed))
+    gen = torch.Generator().manual_seed(seed)
+    x_tr_d, y_tr_d = x_tr.to(device), y_tr.to(device)
+    x_val_d, y_val_d = x_val.to(device), y_val.to(device)
+    n_samples = len(x_tr_d)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     stop = EarlyStopper(patience=patience, min_delta=1e-6)
     mse = nn.MSELoss()
     best_val, best_state = float("inf"), None
     for _ in range(epochs):
         model.train()
-        for xb, yb in loader:
+        _ = int(torch.empty((), dtype=torch.int64).random_(generator=gen).item())
+        perm = torch.randperm(n_samples, generator=gen).to(device)
+        for i in range(0, n_samples, batch):
+            idx = perm[i:i + batch]
             opt.zero_grad()
-            nn.functional.mse_loss(model(xb.to(device)).squeeze(-1), yb.to(device)).backward()
+            nn.functional.mse_loss(model(x_tr_d[idx]).squeeze(-1), y_tr_d[idx]).backward()
             opt.step()
         model.eval()
         with torch.no_grad():
-            v = mse(model(x_val.to(device)).squeeze(-1), y_val.to(device)).item()
+            v = mse(model(x_val_d).squeeze(-1), y_val_d).item()
         if v + 1e-8 < best_val:
             best_val = v
             best_state = {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
@@ -160,25 +170,31 @@ def _eval(model, x, y, ys):
 def _distill(student, teacher, sx_tr, tx_tr, y_tr, sx_val, y_val, alpha,
              *, epochs, batch, patience, lr, seed):
     torch.manual_seed(seed)
-    loader = DataLoader(TensorDataset(sx_tr, tx_tr, y_tr), batch_size=batch,
-                        shuffle=True, generator=torch.Generator().manual_seed(seed))
+    gen = torch.Generator().manual_seed(seed)
+    sx_tr_d, tx_tr_d, y_tr_d = sx_tr.to(device), tx_tr.to(device), y_tr.to(device)
+    sx_val_d, y_val_d = sx_val.to(device), y_val.to(device)
+    n_samples = len(sx_tr_d)
+    teacher.eval()
+    with torch.no_grad():
+        t_all = teacher(tx_tr_d).squeeze(-1)
     opt = torch.optim.Adam(student.parameters(), lr=lr)
     stop = EarlyStopper(patience=patience, min_delta=1e-6)
     mse = nn.MSELoss()
     best_val, best_state = float("inf"), None
     for _ in range(epochs):
         student.train()
-        for xs, xt, yb in loader:
+        _ = int(torch.empty((), dtype=torch.int64).random_(generator=gen).item())
+        perm = torch.randperm(n_samples, generator=gen).to(device)
+        for i in range(0, n_samples, batch):
+            idx = perm[i:i + batch]
             opt.zero_grad()
-            out = student(xs.to(device)).squeeze(-1)
-            with torch.no_grad():
-                t_out = teacher(xt.to(device)).squeeze(-1)
-            loss = alpha * mse(out, yb.to(device)) + (1 - alpha) * mse(out, t_out)
+            out = student(sx_tr_d[idx]).squeeze(-1)
+            loss = alpha * mse(out, y_tr_d[idx]) + (1 - alpha) * mse(out, t_all[idx])
             loss.backward()
             opt.step()
         student.eval()
         with torch.no_grad():
-            v = mse(student(sx_val.to(device)).squeeze(-1), y_val.to(device)).item()
+            v = mse(student(sx_val_d).squeeze(-1), y_val_d).item()
         if v + 1e-8 < best_val:
             best_val = v
             best_state = {k: t.detach().cpu().clone() for k, t in student.state_dict().items()}
@@ -252,8 +268,13 @@ def pretrain_foundation(target_name, args, seed):
         # Trim each dataset's windows to n_tr portion only (no target leakage)
         n = len(tx)
         n_tr = int(n * 0.6)  # only the train split of each source dataset
-        all_x.append(tx[:n_tr])
-        all_y.append(ty[:n_tr])
+        tx_source, ty_source = tx[:n_tr], ty[:n_tr]
+        # Different operating regimes have different physical baselines.  Put
+        # every source's train split in z-score space before pooling so one
+        # dataset's amplitude does not dominate the foundation model.
+        xm, xs, ym, ys = _standardize(tx_source, ty_source)
+        all_x.append((tx_source - xm) / xs)
+        all_y.append((ty_source - ym) / ys)
     X_pre = np.concatenate(all_x)
     Y_pre = np.concatenate(all_y)
     # Shuffle
@@ -271,8 +292,9 @@ def pretrain_foundation(target_name, args, seed):
 
     torch.manual_seed(seed)
     model = _make_teacher(l_t)
+    pretrain_batch = getattr(args, "pretrain_batch", None) or BATCH
     _train(model, x_tr, y_tr, x_val, y_val,
-           epochs=EPOCHS_PRETRAIN, batch=BATCH, patience=PATIENCE,
+           epochs=EPOCHS_PRETRAIN, batch=pretrain_batch, patience=PATIENCE,
            lr=TEACHER_CFG["lr"], seed=seed)
     return model
 
@@ -300,8 +322,9 @@ def finetune_teacher(pretrained, arr, l_s, h, l_t, seed):
     _train(finetuned, x_tr, y_tr, x_val, y_val,
            epochs=EPOCHS_FINETUNE, batch=BATCH, patience=PATIENCE,
            lr=TEACHER_CFG["lr"] * 0.1, seed=seed)  # lower lr for finetuning
+    ft_val_mse = _eval(finetuned, x_val, y_val, ys)
     ft_mse = _eval(finetuned, x_te, y_te, ys)
-    return finetuned, zero_shot_mse, ft_mse
+    return finetuned, zero_shot_mse, ft_val_mse, ft_mse
 
 
 def scratch_teacher(arr, l_s, h, l_t, seed):
@@ -319,7 +342,9 @@ def scratch_teacher(arr, l_s, h, l_t, seed):
     _train(model, x_tr, y_tr, x_val, y_val,
            epochs=EPOCHS_FINETUNE, batch=BATCH, patience=PATIENCE,
            lr=TEACHER_CFG["lr"], seed=seed)
-    return model, _eval(model, x_te, y_te, ys)
+    scratch_val_mse = _eval(model, x_val, y_val, ys)
+    scratch_mse = _eval(model, x_te, y_te, ys)
+    return model, scratch_val_mse, scratch_mse
 
 
 def run_single_dataset(target, args, seed):
@@ -328,17 +353,28 @@ def run_single_dataset(target, args, seed):
     arr = _load(target)
 
     # 1) From-scratch teacher
-    t_scratch, t_scratch_mse = scratch_teacher(arr, l_s, h, l_t, seed)
+    t_scratch, t_scratch_val, t_scratch_mse = scratch_teacher(arr, l_s, h, l_t, seed)
 
-    # 2) Foundation teacher (pretrain + finetune)
-    pretrained = pretrain_foundation(target, args, seed)
-    t_finetuned, t_zero_shot, t_ft_mse = finetune_teacher(pretrained, arr, l_s, h, l_t, seed)
+    if getattr(args, "phase", "all") == "test":
+        t_zero_shot = float("nan")
+        t_ft_val = float("inf")
+        t_ft_mse = float("nan")
+        t_best, t_best_val_mse, t_best_mse, t_source = (
+            t_scratch, t_scratch_val, t_scratch_mse, "scratch")
+    else:
+        # 2) Foundation teacher (pretrain + finetune)
+        pretrained = pretrain_foundation(target, args, seed)
+        t_finetuned, t_zero_shot, t_ft_val, t_ft_mse = finetune_teacher(
+            pretrained, arr, l_s, h, l_t, seed)
 
-    # Pick the better teacher
-    t_best, t_best_mse, t_source = (
-        (t_finetuned, t_ft_mse, "finetuned") if t_ft_mse < t_scratch_mse
-        else (t_scratch, t_scratch_mse, "scratch")
-    )
+        # Pick the better teacher on validation data; test MSE is reported only
+        # after this selection has been frozen.
+        if t_ft_val < t_scratch_val:
+            t_best, t_best_val_mse, t_best_mse, t_source = (
+                t_finetuned, t_ft_val, t_ft_mse, "finetuned")
+        else:
+            t_best, t_best_val_mse, t_best_mse, t_source = (
+                t_scratch, t_scratch_val, t_scratch_mse, "scratch")
 
     # 3) Student baseline (no distillation)
     SX, TX, Y = _pairs(arr, l_s, h, l_t)
@@ -371,8 +407,11 @@ def run_single_dataset(target, args, seed):
         "target": target, "family": _family(target), "seed": seed,
         "l_s": l_s, "h": h, "l_t": l_t,
         "teacher_scratch_mse": t_scratch_mse,
+        "teacher_scratch_val_mse": t_scratch_val,
         "teacher_zero_shot_mse": t_zero_shot,
         "teacher_finetune_mse": t_ft_mse,
+        "teacher_finetune_val_mse": t_ft_val,
+        "teacher_best_val_mse": t_best_val_mse,
         "teacher_best_mse": t_best_mse,
         "teacher_best_source": t_source,
         "baseline_mse": baseline_mse,
@@ -396,10 +435,30 @@ def main():
     parser.add_argument("--phase", choices=("test", "foundation", "all"), default="all")
     parser.add_argument("--lookback", type=int, default=20)
     parser.add_argument("--horizon", type=int, default=12)
+    parser.add_argument("--l_teacher", type=int, default=None,
+                        help="override TEACHER_CFG['L_t'] (e.g. 60)")
+    parser.add_argument("--teacher_d_model", type=int, default=None,
+                        help="override TEACHER_CFG['d_model'] (e.g. 64)")
+    parser.add_argument("--student_capacity", choices=("small", "medium"), default="small",
+                        help="student PatchTST capacity: small (d=32,h=4,ff=64) or medium (d=64,h=8,ff=128)")
+    parser.add_argument("--pretrain_batch", type=int, default=None,
+                        help="batch size for pooled pretraining (default: BATCH=64)")
+    parser.add_argument("--output", type=str, default=None,
+                        help="optional custom CSV output path")
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--datasets", nargs="+", default=None,
                         help="specific dataset filenames (default: one per family)")
     args = parser.parse_args()
+
+    global _CSV_PATH
+    if args.l_teacher is not None:
+        TEACHER_CFG["L_t"] = args.l_teacher
+    if args.teacher_d_model is not None:
+        TEACHER_CFG["d_model"] = args.teacher_d_model
+    if args.student_capacity == "medium":
+        STUDENT_CFG.update({"d_model": 64, "nhead": 8, "dim_ff": 128, "dropout": 0.05, "lr": 3e-4})
+    if args.output:
+        _CSV_PATH = args.output
 
     if args.datasets:
         targets = args.datasets
@@ -414,7 +473,7 @@ def main():
             "data_delayed_stable_h2o_tau150_s1_A0.9_b0.03.pkl",  # delayed (strongly chaotic)
             "data_complex_multidelay_tau30_70.pkl",      # multi-delay
             "data_complex_forceddelay_tau50_A0.05_f0.03.pkl",  # forced+delay
-            "data_complex_parammod_tau50_V8e-06-1e-05_T200.pkl",  # param mod
+            "data_complex_parammod_tau50_V8.0e-06-1.4e-05_T200.pkl",  # param mod
             "data_complex_noisy_tau50_s0.02.pkl",        # noisy control
         ]
 
@@ -462,10 +521,11 @@ def main():
         tb = np.mean([r["baseline_mse"] for r in g])
         st = np.mean([r["student_mse"] for r in g])
         imp = np.mean([r["improvement_percent"] for r in g])
-        src = g[0]["teacher_best_source"]
-        ft_wins = sum(1 for r in g if r["teacher_finetune_mse"] < r["teacher_scratch_mse"])
+        sources = sorted({r["teacher_best_source"] for r in g})
+        source_label = "+".join(sources)
+        ft_wins = sum(1 for r in g if r["teacher_finetune_val_mse"] < r["teacher_scratch_val_mse"])
         print(f"{fam:>10} {tgt.split('data_')[1][:30]:>30}: "
-              f"t_scratch={ts:.3e} t_zeroshot={tz:.3e} t_ft={tf:.3e} ({src}, {ft_wins}/{len(g)} ft wins) | "
+              f"t_scratch={ts:.3e} t_zeroshot={tz:.3e} t_ft={tf:.3e} ({source_label}, {ft_wins}/{len(g)} ft wins) | "
               f"baseline={tb:.3e} student={st:.3e} ({imp:+.1f}%)")
     print(f"-> {_CSV_PATH}")
 

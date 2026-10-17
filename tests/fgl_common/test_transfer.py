@@ -32,5 +32,5 @@ def test_evaluate_teacher_transfer_conditions(tmp_path):
         num_bins=bins,
         seed=0,
     )
-    assert {r["condition"] for r in rows} == {"zero_shot", "finetuned", "scratch"}
+    assert {r["condition"] for r in rows} == {"zero_shot", "finetuned", "scratch", "scratch_converged"}
     assert all(0 <= r["teacher_mse"] < bins ** 2 for r in rows)

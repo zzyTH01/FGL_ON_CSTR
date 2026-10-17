@@ -249,7 +249,7 @@ def main():
         captured = []
         def snap(student, round_idx, mse_val, mse_test, _cap=captured):
             import copy as _copy
-            _cap.append((round_idx, _copy.deepcopy(student), float(mse_test)))
+            _cap.append((round_idx, _copy.deepcopy(student), float(mse_val), float(mse_test)))
         run_iterative_distillation(
             raw.tolist(), L=args.L, H=args.H, num_bins=args.bins,
             epochs=args.epochs, round_epochs=args.round_epochs, K=args.rounds,
@@ -257,11 +257,13 @@ def main():
             weight_distributions=(variant,), verbose=False,
             e_iter_snapshot_fn=snap)
         if captured:
-            best_round, best_model, best_mse = min(captured, key=lambda t: t[2])
+            best_round, best_model, best_val_mse, best_mse = min(captured, key=lambda t: t[2])
             iterative_models[variant] = best_model
             iterative_bin_mse[variant] = best_mse
-            print(f"  [iter {variant}] snapshots: {[(r, f'{m:.1f}') for r, _, m in captured]}")
-            print(f"  [iter {variant}] selected round {best_round}, bin MSE={best_mse:.1f}")
+            print(f"  [iter {variant}] val snapshots: "
+                  f"{[(r, f'{v:.1f}') for r, _, v, _ in captured]}")
+            print(f"  [iter {variant}] selected round {best_round} by val "
+                  f"MSE={best_val_mse:.1f}; test bin MSE={best_mse:.1f}")
 
     # Generate iterative model predictions using the same DataLoader convention
     # as the archive script to guarantee consistency.

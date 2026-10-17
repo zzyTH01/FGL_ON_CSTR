@@ -30,28 +30,35 @@
 - 关键证据:`cstr/results/lyapunov_tau.csv` 显示全部 13 个数据集 Rosenstein 最大 Lyapunov 指数为正
 - 注意:τ=50/100/150 是 `conclusion/1014.md` 中 Foundation Teacher 的三个 delayed 代表集
 
-## 四、复杂数据集家族(generate_complex.py,2026-10-14)
+## 四、复杂数据集家族(generate_complex.py,2026-10-16 修正重跑)
 
 生成程序：`cstr/generate_complex.py`（`--sweep` 批量产出）。
-研究用途：拓展复杂度维度（多延迟/强迫+延迟/参数慢调/噪声控制），测试 FGL 的通用性。
+控制律与物理调制修正：
+1. 所有模式统一先读取 `delayed_val = delay_buf[0]` 再执行缓冲区移位更新；`τ` 单位统一为采样步（`dt=0.1s`）；多通道维护独立 EMA（`filter_beta=0.03`）。
+2. `simulate_param_mod` 改为通过 Cantera 移动壁面速度 `wall.velocity` 在 CVODES 内部连续驱动体积正弦调制，并加入 `feedback_limit=0.2` 防熄火限幅（解决原直接赋值 `cstr.volume` 未生效及强反馈熄火平坦化问题）。
+3. 批量生成采用 multi_delay `A=0.4/0.25`、forced_delay `A=0.9, limit=0.85`、param_mod `A=0.9, limit=0.2`、noisy `A=0.5, limit=0.2`。
 
-| 文件 | 模式 | 关键参数 |
+| 文件 | 家族 | 参数与备注 |
 |---|---|---|
-| `data_complex_multidelay_tau30_70.pkl` | multi_delay | τ={30,70}, A=0.1 |
-| `data_complex_multidelay_tau50_120.pkl` | multi_delay | τ={50,120}, A=0.1 |
-| `data_complex_multidelay_tau30_70_120.pkl` | multi_delay | τ={30,70,120}, A=0.05 |
-| `data_complex_forceddelay_tau50_A0.05_f0.03.pkl` | forced_delay | τ=50, A=0.05, f=0.03 |
-| `data_complex_forceddelay_tau50_A0.1_f0.05.pkl` | forced_delay | τ=50, A=0.1, f=0.05 |
-| `data_complex_forceddelay_tau80_A0.08_f0.02.pkl` | forced_delay | τ=80, A=0.08, f=0.02 |
-| `data_complex_forceddelay_tau100_A0.05_f0.07.pkl` | forced_delay | τ=100, A=0.05, f=0.07 |
-| `data_complex_parammod_tau50_V8e-06-1e-05_T200.pkl` | param_mod | τ=50, V 8–14 μm³, T=200s |
-| `data_complex_parammod_tau80_V8e-06-1e-05_T150.pkl` | param_mod | τ=80, V 8–14 μm³, T=150s |
-| `data_complex_parammod_tau50_V6e-06-2e-05_T300.pkl` | param_mod | τ=50, V 6–16 μm³, T=300s |
-| `data_complex_noisy_tau50_s0.01.pkl` | noisy | τ=50, σ=0.01 |
-| `data_complex_noisy_tau50_s0.02.pkl` | noisy | τ=50, σ=0.02 |
-| `data_complex_noisy_tau100_s0.02.pkl` | noisy | τ=100, σ=0.02 |
+| `data_complex_multidelay_tau30_70.pkl` | multi_delay | τ={30,70}, A=0.4;周期性 0.854,dom lag 198 |
+| `data_complex_multidelay_tau50_120.pkl` | multi_delay | τ={50,120}, A=0.4;周期性 0.821,dom lag 208 |
+| `data_complex_multidelay_tau30_70_120.pkl` | multi_delay | τ={30,70,120}, A=0.25;周期性 0.870,dom lag 202 |
+| `data_complex_forceddelay_tau50_A0.05_f0.03.pkl` | forced_delay | τ=50, A=0.05, f=0.03;周期性 0.388,dom lag 140 |
+| `data_complex_forceddelay_tau50_A0.1_f0.05.pkl` | forced_delay | τ=50, A=0.1, f=0.05;周期性 0.576,dom lag 399 |
+| `data_complex_forceddelay_tau80_A0.08_f0.02.pkl` | forced_delay | τ=80, A=0.08, f=0.02;周期性 0.416,dom lag 20 |
+| `data_complex_forceddelay_tau100_A0.05_f0.07.pkl` | forced_delay | τ=100, A=0.05, f=0.07;周期性 0.449,dom lag 20 |
+| `data_complex_parammod_tau50_V8.0e-06-1.4e-05_T200.pkl` | param_mod | τ=50, V 8–14 μm³, T=200s;周期性 0.231,dom lag 222 |
+| `data_complex_parammod_tau80_V8.0e-06-1.4e-05_T150.pkl` | param_mod | τ=80, V 8–14 μm³, T=150s;周期性 0.249,dom lag 222 |
+| `data_complex_parammod_tau50_V6.0e-06-1.6e-05_T300.pkl` | param_mod | τ=50, V 6–16 μm³, T=300s;周期性 0.228,dom lag 116 |
+| `data_complex_noisy_tau50_s0.01.pkl` | noisy | τ=50, σ=0.01, A=0.5;周期性 0.933,dom lag 86 |
+| `data_complex_noisy_tau50_s0.02.pkl` | noisy | τ=50, σ=0.02, A=0.5;周期性 0.933,dom lag 86 |
+| `data_complex_noisy_tau50_s0.05.pkl` | noisy | τ=50, σ=0.05, A=0.5;周期性 0.933,dom lag 86 |
+| `data_complex_noisy_tau100_s0.02.pkl` | noisy | τ=100, σ=0.02, A=0.5;周期性 0.933,dom lag 86 |
+| `data_complex_noisy_tau100_s0.08.pkl` | noisy | τ=100, σ=0.08, A=0.5;周期性 0.933,dom lag 86 |
 
-所有文件:(6000, 2) float64,H₂O 双列,与 `data_h2o.pkl` 同格式;`data_complex_parammod_tau50.pkl` 为脚本早期/备用输出,正式 Foundation Teacher 使用参数化命名版本。
+- 上述 `.pkl` 均为 `(6000, 2)`、H₂O 双列；2026-10-14 旧复杂数据与旧 `V{:.0e}` 文件名已不能作为当前结论依据。
+- `data_complex_parammod_tau50.pkl` 仅是历史早期/备用输出，不在 Foundation Teacher 正式 `FAMILIES` 中。
+- noisy sweep 现包含 15 个正式文件中的 5 个 noisy 数据（旧报告写 3 个）；Foundation Teacher 默认代表集仍只用 `tau50_s0.02`。
 
 ## 复用规则
 

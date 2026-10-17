@@ -163,7 +163,6 @@ def run_teacher_sweep(args) -> None:
         for d_model in args.d_models:
             for nhead in args.nheads:
                 for lr in args.learning_rates:
-                    seed_best = None
                     seed_vals = []
                     for seed in range(args.seeds):
                         TX, TY = build_teacher_windows(arr, args.lookback, args.horizon, l_t)
@@ -181,18 +180,24 @@ def run_teacher_sweep(args) -> None:
                         info = _train_regressor(model, x_tr, y_tr, x_val, y_val,
                                                 epochs=args.epochs, batch_size=args.batch_size,
                                                 patience=args.patience, lr=lr, seed=seed)
+                        val_mse = _eval_mse(model, x_val, y_val, Ys)
                         test_mse = _eval_mse(model, x_te, y_te, Ys)
-                        seed_vals.append(test_mse)
-                    mean_mse = float(np.mean(seed_vals))
+                        seed_vals.append((val_mse, test_mse))
+                    val_vals = [val for val, _ in seed_vals]
+                    test_vals = [test for _, test in seed_vals]
+                    mean_val = float(np.mean(val_vals))
+                    mean_test = float(np.mean(test_vals))
                     row = {"dataset": args.dataset, "L_s": args.lookback, "H": args.horizon,
                            "L_teacher": l_t, "d_model": d_model, "nhead": nhead,
                            "dim_feedforward": args.dim_feedforward, "lr": lr,
                            "dropout": args.dropout, "seeds": args.seeds,
-                           "teacher_mse_mean": mean_mse,
-                           "teacher_mse_sd": float(np.std(seed_vals, ddof=1)) if len(seed_vals) > 1 else 0.0}
+                           "teacher_val_mse_mean": mean_val,
+                           "teacher_mse_mean": mean_test,
+                           "teacher_val_mse_sd": float(np.std(val_vals, ddof=1)) if len(val_vals) > 1 else 0.0,
+                           "teacher_mse_sd": float(np.std(test_vals, ddof=1)) if len(test_vals) > 1 else 0.0}
                     rows.append(row)
                     print(f"  L_t={l_t:>3} d={d_model:>3} h={nhead} lr={lr:.0e} "
-                          f"-> teacher MSE={mean_mse:.4e}", flush=True)
+                          f"-> teacher val/test MSE={mean_val:.4e}/{mean_test:.4e}", flush=True)
 
     os.makedirs(_RESULTS_DIR, exist_ok=True)
     fields = list(rows[0].keys())
@@ -202,10 +207,10 @@ def run_teacher_sweep(args) -> None:
         writer.writeheader()
         writer.writerows(rows)
     os.replace(tmp, _SWEEP_CSV)
-    best = min(rows, key=lambda r: r["teacher_mse_mean"])
-    print(f"\nBest teacher config: L_t={best['L_teacher']} d={best['d_model']} "
+    best = min(rows, key=lambda r: r["teacher_val_mse_mean"])
+    print(f"\nBest teacher config (validation): L_t={best['L_teacher']} d={best['d_model']} "
           f"h={best['nhead']} lr={best['lr']:.0e} "
-          f"MSE={best['teacher_mse_mean']:.4e}")
+          f"val/test MSE={best['teacher_val_mse_mean']:.4e}/{best['teacher_mse_mean']:.4e}")
     print(f"-> {_SWEEP_CSV}")
 
 
@@ -233,7 +238,8 @@ def _train_baseline_and_student(args, arr, teacher_cfg, alpha, seed):
                        nhead=teacher_cfg["nhead"],
                        dim_feedforward=teacher_cfg["dim_feedforward"],
                        dropout=teacher_cfg["dropout"]).to(device)
-    _train_regressor(teacher, tx_tr, y_tr, tx_tr, y_tr,
+    tx_val, _ = _to_tensor(TX[n_tr:n_tr+n_val], Y[n_tr:n_tr+n_val], tx_mean, tx_std, sy_mean, sy_std)
+    _train_regressor(teacher, tx_tr, y_tr, tx_val, y_val,
                      epochs=args.epochs, batch_size=args.batch_size,
                      patience=args.patience, lr=teacher_cfg["lr"], seed=seed)
 
@@ -365,7 +371,10 @@ def main():
         if os.path.exists(_SWEEP_CSV):
             with open(_SWEEP_CSV, newline="") as f:
                 sweep_rows = list(csv.DictReader(f))
-            best = min(sweep_rows, key=lambda r: float(r["teacher_mse_mean"]))
+            if sweep_rows and "teacher_val_mse_mean" in sweep_rows[0]:
+                best = min(sweep_rows, key=lambda r: float(r["teacher_val_mse_mean"]))
+            else:
+                best = min(sweep_rows, key=lambda r: float(r["teacher_mse_mean"]))
             teacher_cfg = {
                 "L_teacher": int(best["L_teacher"]),
                 "d_model": int(best["d_model"]),

@@ -171,6 +171,12 @@ def build_windows(arr, l_student, horizon, l_teacher):
 
 # ============================================================ training
 
+def _forward_1d(model, x):
+    """Reduce optional trailing scalar dimension (PatchTST) before losses."""
+    out = model(x)
+    return out.squeeze(-1) if out.ndim > 1 else out
+
+
 def _train(model, sx_tr, y_tr, sx_val, y_val, *, tx_tr=None, teacher=None,
            alpha=1.0, epochs=200, batch_size=64, patience=15, lr=5e-4, seed=42):
     torch.manual_seed(seed)
@@ -184,7 +190,7 @@ def _train(model, sx_tr, y_tr, sx_val, y_val, *, tx_tr=None, teacher=None,
         model.train()
         for xs, yb in loader:
             opt.zero_grad()
-            out = model(xs.to(device))
+            out = _forward_1d(model, xs.to(device))
             loss = alpha * mse(out, yb.to(device))
             if teacher is not None and tx_tr is not None:
                 # Teacher batch: same targets, teacher windows
@@ -197,7 +203,7 @@ def _train(model, sx_tr, y_tr, sx_val, y_val, *, tx_tr=None, teacher=None,
             opt.step()
         model.eval()
         with torch.no_grad():
-            v = mse(model(sx_val.to(device)), y_val.to(device)).item()
+            v = mse(_forward_1d(model, sx_val.to(device)), y_val.to(device)).item()
         if v + 1e-8 < best_val:
             best_val = v
             best_state = {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
@@ -225,15 +231,15 @@ def _train_with_distill(model, sx_tr, tx_tr, y_tr, sx_val, y_val, teacher,
         model.train()
         for xs, xt, yb in loader:
             opt.zero_grad()
-            out = model(xs.to(device))
+            out = _forward_1d(model, xs.to(device))
             with torch.no_grad():
-                t_out = teacher(xt.to(device))
+                t_out = _forward_1d(teacher, xt.to(device))
             loss = alpha * mse(out, yb.to(device)) + (1 - alpha) * mse(out, t_out)
             loss.backward()
             opt.step()
         model.eval()
         with torch.no_grad():
-            v = mse(model(sx_val.to(device)), y_val.to(device)).item()
+            v = mse(_forward_1d(model, sx_val.to(device)), y_val.to(device)).item()
         if v + 1e-8 < best_val:
             best_val = v
             best_state = {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
@@ -248,7 +254,7 @@ def _train_with_distill(model, sx_tr, tx_tr, y_tr, sx_val, y_val, teacher,
 def _eval(model, x, y, y_std):
     model.eval()
     with torch.no_grad():
-        pred = model(x.to(device))
+        pred = _forward_1d(model, x.to(device))
         return float(torch.mean((pred - y.to(device)) ** 2).item() * y_std ** 2)
 
 
@@ -325,6 +331,7 @@ def run_arch_sweep(args, arr, teacher, teacher_mse):
                        epochs=args.epochs, batch_size=args.batch_size,
                        patience=args.patience, lr=lr, seed=seed)
                 baseline_mse = _eval(baseline, sx_te, y_te, ys)
+                baseline_val_mse = _eval(baseline, sx_val, y_val, ys)
 
                 # Students with distillation at each α
                 for alpha in args.alphas:
@@ -335,11 +342,14 @@ def run_arch_sweep(args, arr, teacher, teacher_mse):
                                         epochs=args.epochs, batch_size=args.batch_size,
                                         patience=args.patience, lr=lr, seed=seed)
                     student_mse = _eval(student, sx_te, y_te, ys)
+                    student_val_mse = _eval(student, sx_val, y_val, ys)
                     imp = (baseline_mse - student_mse) / baseline_mse * 100 if baseline_mse > 0 else 0
                     row = {"phase": "arch", "student_arch": arch, "capacity": cap,
                            "L_s": l_s, "H": H, "alpha": alpha, "seed": seed,
                            "teacher_mse": teacher_mse, "baseline_mse": baseline_mse,
-                           "student_mse": student_mse, "improvement_percent": imp}
+                           "baseline_val_mse": baseline_val_mse,
+                           "student_mse": student_mse, "student_val_mse": student_val_mse,
+                           "improvement_percent": imp}
                     rows.append(row)
                     done += 1
                     print(f"  [{done:>3}/{total}] {arch:>12}/{cap:<7} α={alpha:.2f} seed={seed}: "
@@ -384,6 +394,7 @@ def run_ls_sweep(args, arr, teacher, teacher_mse):
                    epochs=args.epochs, batch_size=args.batch_size,
                    patience=args.patience, lr=lr, seed=seed)
             baseline_mse = _eval(baseline, sx_te, y_te, ys)
+            baseline_val_mse = _eval(baseline, sx_val, y_val, ys)
             torch.manual_seed(seed)
             student = make_student(best_arch, l_s, best_cap)
             _train_with_distill(student, sx_tr, tx_tr, y_tr, sx_val, y_val,
@@ -391,11 +402,14 @@ def run_ls_sweep(args, arr, teacher, teacher_mse):
                                 epochs=args.epochs, batch_size=args.batch_size,
                                 patience=args.patience, lr=lr, seed=seed)
             student_mse = _eval(student, sx_te, y_te, ys)
+            student_val_mse = _eval(student, sx_val, y_val, ys)
             imp = (baseline_mse - student_mse) / baseline_mse * 100 if baseline_mse > 0 else 0
             row = {"phase": "ls", "student_arch": best_arch, "capacity": best_cap,
                    "L_s": l_s, "H": H, "alpha": args.alpha, "seed": seed,
                    "teacher_mse": teacher_mse, "baseline_mse": baseline_mse,
-                   "student_mse": student_mse, "improvement_percent": imp}
+                   "baseline_val_mse": baseline_val_mse,
+                   "student_mse": student_mse, "student_val_mse": student_val_mse,
+                   "improvement_percent": imp}
             rows.append(row)
             done += 1
             print(f"  [{done:>3}/{total}] L_s={l_s:>3} seed={seed}: "
@@ -406,7 +420,7 @@ def run_ls_sweep(args, arr, teacher, teacher_mse):
 
 
 def _best_from_csv():
-    """Read the arch sweep results and find the best (arch, cap) by student MSE at α=0.9."""
+    """Read arch sweep results and select by validation student MSE at α=0.9."""
     if not os.path.exists(_CSV_PATH):
         return None, None
     with open(_CSV_PATH, newline="") as f:
@@ -416,7 +430,10 @@ def _best_from_csv():
         return None, None
     groups = defaultdict(list)
     for r in rows:
-        groups[(r["student_arch"], r["capacity"])].append(float(r["student_mse"]))
+        if r.get("student_val_mse") not in (None, ""):
+            groups[(r["student_arch"], r["capacity"])].append(float(r["student_val_mse"]))
+    if not groups:
+        return None, None
     best = min(groups, key=lambda k: sum(groups[k]) / len(groups[k]))
     return best
 
@@ -431,13 +448,15 @@ def _save_rows(new_rows, args):
             existing = list(csv.DictReader(f))
     all_rows = existing + new_rows
     fields = ["phase", "student_arch", "capacity", "L_s", "H", "alpha", "seed",
-              "teacher_mse", "baseline_mse", "student_mse", "improvement_percent"]
+              "teacher_mse", "baseline_mse", "baseline_val_mse",
+              "student_mse", "student_val_mse", "improvement_percent"]
     tmp = f"{_CSV_PATH}.tmp"
     with open(tmp, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(all_rows)
     os.replace(tmp, _CSV_PATH)
+    args.fresh = False
     print(f"  -> {_CSV_PATH}")
 
 
@@ -480,7 +499,11 @@ def main():
     parser.add_argument("--student_lookbacks", type=int, nargs="+", default=[20, 25, 31, 40])
     parser.add_argument("--alpha", type=float, default=0.9)
     parser.add_argument("--fresh", action="store_true", help="overwrite CSV instead of appending")
+    parser.add_argument("--output", type=str, default=None, help="optional custom CSV output path")
     args = parser.parse_args()
+    global _CSV_PATH
+    if args.output:
+        _CSV_PATH = args.output
 
     arr = _load_data(args.dataset)
 

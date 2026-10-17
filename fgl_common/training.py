@@ -93,15 +93,27 @@ def page_hinkley_update(error, state, delta=0.005):
 
 
 # ==================== Shared bin edges ====================
-def compute_shared_bin_edges(data, lookback_window, num_bins):
-    """Bin edges computed from *all* H=1 targets (widest coverage), so teacher and
-    student share the same discretization. Matches ``fgl_cstr.py`` /
-    ``adaptive_weight_exp.py``. Returns ``(bin_edges, y_min, y_max)``."""
+def compute_shared_bin_edges(data, lookback_window, num_bins,
+                             val_size: float = 0.2, test_size: float = 0.2):
+    """Bin edges computed from the H=1 *training* targets only.
+
+    Teacher and student share the same discretization while avoiding leakage
+    from validation/test extrema.  The split rule matches the sliding-window
+    datasets: ``n_train = N - int(N*val_size) - int(N*test_size)``.
+    Returns ``(bin_edges, y_min, y_max)``.
+    """
     x_raw = np.array([float(pt[0]) for pt in data])
     y_raw = np.array([float(pt[1]) for pt in data])
     L = lookback_window
-    all_y = np.array([y_raw[i + L] for i in range(len(x_raw) - L - 1 + 1)])
-    return np.linspace(all_y.min(), all_y.max(), num_bins - 1), all_y.min(), all_y.max()
+    all_y = np.array([y_raw[i + L] for i in range(len(x_raw) - L)])
+    n_val = int(len(all_y) * val_size)
+    n_test = int(len(all_y) * test_size)
+    n_train = len(all_y) - n_val - n_test
+    if n_train <= 0:
+        raise ValueError("not enough samples to compute train-only bin edges")
+    train_y = all_y[:n_train]
+    return (np.linspace(train_y.min(), train_y.max(), num_bins - 1),
+            float(train_y.min()), float(train_y.max()))
 
 
 # ==================== Evaluation ====================
@@ -599,7 +611,7 @@ def run_adaptive_weight(data, L=20, H=15, alpha=0.5, temperature=4, num_bins=50,
         # target as student idx j-(H-1). Re-key into student-index space so the
         # gap is on aligned targets (fixes the offset misalignment inherited from
         # the no-op is_teacher_loader in the original script).
-        teacher_errors = {int(j - (H - 1)): e for j, e in te_raw.items()}
+        teacher_errors = {int(j): e for j, e in te_raw.items()}
     weights_dict, raw_w, norm_w = compute_weights(variant, student_errors,
                                                   teacher_errors, student_train_indices)
     if verbose:
@@ -741,7 +753,7 @@ def _compute_arm_weights(variant, student, teacher, student_train_full,
         return {idx: 1.0 for idx in student_train_indices}
     se = compute_per_sample_mse(student, student_train_full, L)
     te_raw = compute_per_sample_mse(teacher, teacher_train_full, L)
-    te = {int(j - (H - 1)): e for j, e in te_raw.items()}
+    te = {int(j): e for j, e in te_raw.items()}
     weights, _, _ = compute_weights(variant, se, te, student_train_indices, w_floor=w_floor)
     return weights
 
@@ -1121,7 +1133,26 @@ def run_adaptive_inference(data, student_horizon=12, base_alpha=0.5, num_bins=50
 
 
 # ================================================================
-#  Seq2Seq FGL — independent flow
+def _shared_seq_bin_edges(data, lookback_window: int, horizon: int, num_bins: int,
+                          val_size: float = 0.2, test_size: float = 0.2):
+    """Compute sequence bin edges from the training targets only."""
+    x_raw = np.array([float(pt[0]) for pt in data])
+    y_raw = np.array([float(pt[1]) for pt in data])
+    L, H = lookback_window, horizon
+    windows = [y_raw[i + L:i + L + H] for i in range(len(x_raw) - L - H + 1)]
+    if not windows:
+        raise ValueError("not enough samples for sequence bin edges")
+    n_windows = len(windows)
+    n_val = int(n_windows * val_size)
+    n_test = int(n_windows * test_size)
+    n_train = n_windows - n_val - n_test
+    if n_train <= 0:
+        raise ValueError("not enough samples to compute train-only sequence bin edges")
+    train_y = np.concatenate(windows[:n_train])
+    return np.linspace(train_y.min(), train_y.max(), num_bins - 1), float(train_y.min()), float(train_y.max())
+
+
+# ================================================================
 # ================================================================
 def run_seq2seq(data, student_horizon=72, teacher_steps=10, alpha=0.5, num_bins=50,
                 val_size=0.2, test_size=0.2, epochs=50, temperature=4,
@@ -1133,14 +1164,10 @@ def run_seq2seq(data, student_horizon=72, teacher_steps=10, alpha=0.5, num_bins=
     H, K = student_horizon, min(teacher_steps, student_horizon)
     L = lookback_window
 
-    # shared bin edges over all sequence targets
-    x_raw = np.array([float(pt[0]) for pt in data])
-    y_raw = np.array([float(pt[1]) for pt in data])
-    all_y = []
-    for i in range(len(x_raw) - L - H + 1):
-        all_y.extend(y_raw[i + L: i + L + H])
-    all_y = np.array(all_y)
-    shared_bin_edges = np.linspace(all_y.min(), all_y.max(), num_bins - 1)
+    # Shared discretization: training sequence targets only (no val/test leakage).
+    shared_bin_edges, _, _ = _shared_seq_bin_edges(
+        data, lookback_window=L, horizon=H, num_bins=num_bins,
+        val_size=val_size, test_size=test_size)
 
     if verbose:
         print(f"\n{'=' * 55}")

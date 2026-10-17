@@ -19,7 +19,8 @@ def create_time_series_dataset(data,
                                offset: int = 0,
                                MSE: bool = False,
                                batch_size: int = 1,
-                               bin_edges: np.ndarray = None):
+                               bin_edges: np.ndarray = None,
+                               align_before_split: bool = True):
     """Build train/val/test DataLoaders with fractional splits.
 
     Args:
@@ -35,6 +36,11 @@ def create_time_series_dataset(data,
         bin_edges: pre-computed bin edges (length ``num_bins - 1``). When
             provided, used directly instead of computing from ``y_train`` —
             this keeps teacher and student on the *same* discretization.
+        align_before_split: apply ``offset`` to the full aligned window stream
+            before train/val/test splitting.  With the FGL convention
+            ``offset=H-1``, this makes teacher and student split boundaries and
+            targets match exactly.  Set to False only to reproduce the legacy
+            within-split offset behavior.
 
     Returns:
         ``(train_loader, val_loader, test_loader,
@@ -50,6 +56,14 @@ def create_time_series_dataset(data,
 
     X = np.stack(X_windows)
     y = np.stack(y_windows)
+
+    # Apply the stream shift before splitting.  After dropping the first
+    # ``offset`` aligned windows, tuple indices are already in student-index
+    # space, so zip(student, teacher) pairs remain aligned in every split.
+    if align_before_split and offset:
+        X = X[offset:]
+        y = y[offset:]
+        offset = 0
 
     N = X.shape[0]
     assert 0 < val_size + test_size < 1, "val_size + test_size must be in (0,1)"

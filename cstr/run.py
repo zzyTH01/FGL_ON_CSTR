@@ -295,6 +295,7 @@ def run_transfer_generalization_exp(args):
     """Leave-one-example-out CSTR τ 家族教师迁移。"""
     from fgl_common.transfer import (
         build_pretrained_teacher,
+        compute_global_bin_edges,
         evaluate_teacher_transfer,
         list_delayed_cstr_datasets,
         split_lopo,
@@ -310,16 +311,18 @@ def run_transfer_generalization_exp(args):
         paths = paths[:4]
     seeds = range(args.seeds or 1)
     epochs = 1 if args.quick else 3
+    global_edges, _, _ = compute_global_bin_edges(paths, L=20, num_bins=50)
     rows = []
     outdir = os.path.join(_CSTR_DIR, "results", "transfer")
     os.makedirs(outdir, exist_ok=True)
     for seed in seeds:
         for target in paths:
             source, _ = split_lopo(paths, target)
-            teacher = build_pretrained_teacher(source, epochs=epochs, seed=seed)
+            teacher = build_pretrained_teacher(
+                source, epochs=epochs, seed=seed, bin_edges=global_edges)
             rows.extend(evaluate_teacher_transfer(
                 target, teacher, finetune_epochs=epochs,
-                scratch_epochs=epochs, seed=seed,
+                scratch_epochs=epochs, bin_edges=global_edges, seed=seed,
             ))
     out_csv = os.path.join(outdir, "transfer_teacher_lopo.csv")
     with open(out_csv, "w", newline="") as f:
